@@ -417,6 +417,32 @@ function addUserMarker(lat, lng) {
   userMarker.bindTooltip('You are here', { direction: 'top', offset: [0, -12] });
 }
 
+// ── Group rows by resolved library ──
+function groupByLibrary(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = r.library ? r.library.id : r.libraryName;
+    if (map.has(key)) {
+      const g = map.get(key);
+      g.available += r.available;
+      g.total += r.total;
+      g.onShelf = g.available > 0;
+      g.copies.push({ section: r.section, callNumber: r.callNumber, available: r.available, total: r.total });
+    } else {
+      map.set(key, {
+        library: r.library,
+        libraryName: r.libraryName,
+        available: r.available,
+        total: r.total,
+        onShelf: r.available > 0,
+        distance: null,
+        copies: [{ section: r.section, callNumber: r.callNumber, available: r.available, total: r.total }]
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
 // ── Display Results ──
 function showResults(parsed) {
   // Clear old result markers
@@ -426,8 +452,9 @@ function showResults(parsed) {
   // Reset all base markers to gray
   Object.values(allMarkers).forEach(m => m.setStyle({ fillColor: '#aaa', color: '#888', radius: 5, fillOpacity: 0.5 }));
 
-  // Compute distances
-  parsed.forEach(r => {
+  // Group by library, then compute distances
+  const grouped = groupByLibrary(parsed);
+  grouped.forEach(r => {
     if (r.library && userLatLng) {
       r.distance = distanceMiles(userLatLng.lat, userLatLng.lng, r.library.lat, r.library.lng);
     } else {
@@ -436,8 +463,8 @@ function showResults(parsed) {
   });
 
   // Sort: on-shelf first, then by distance (or alphabetically)
-  const onShelf = parsed.filter(r => r.onShelf);
-  const checkedOut = parsed.filter(r => !r.onShelf);
+  const onShelf = grouped.filter(r => r.onShelf);
+  const checkedOut = grouped.filter(r => !r.onShelf);
 
   if (userLatLng) {
     onShelf.sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999));
@@ -467,11 +494,14 @@ function showResults(parsed) {
     if (base) base.setStyle({ fillColor: color, color: isOnShelf ? '#0f5c2a' : '#993333', radius, fillOpacity });
 
     // Add popup
+    const copyLines = r.copies.map(c => {
+      const label = [c.section, c.callNumber].filter(Boolean).join(' — ');
+      return label ? `<div class="popup-call">${label}</div>` : '';
+    }).join('');
     const popupHtml = `
       <div class="popup-name">${r.library.name}</div>
       <div class="${isOnShelf ? 'popup-avail' : 'popup-avail out'}">${r.available} of ${r.total} available</div>
-      ${r.section ? `<div style="color:#888;font-size:12px">${r.section}</div>` : ''}
-      ${r.callNumber ? `<div class="popup-call">${r.callNumber}</div>` : ''}
+      ${copyLines}
       ${r.distance != null ? `<div style="margin-top:4px;font-size:13px">${r.distance.toFixed(1)} mi away</div>` : ''}
       <a class="popup-directions" href="https://www.google.com/maps/dir/?api=1&destination=${r.library.lat},${r.library.lng}" target="_blank" rel="noopener">Get Directions</a>
     `;
@@ -505,7 +535,7 @@ function showResults(parsed) {
     : 'All checked out';
 
   const gpsNote = userLatLng ? '' : ' (enable location for distances)';
-  resultsStatus.textContent = `${parsed.length} locations found${gpsNote}`;
+  resultsStatus.textContent = `${grouped.length} locations found${gpsNote}`;
 
   resultsList.innerHTML = '';
   sorted.forEach((r, i) => {
@@ -513,11 +543,12 @@ function showResults(parsed) {
     row.className = 'result-row' + (r.onShelf && i === 0 && userLatLng ? ' nearest' : '');
 
     const isNearest = r.onShelf && i === 0;
+    const detail = r.copies.map(c => c.callNumber || c.section || 'No call number').join(', ');
     row.innerHTML = `
       <div class="result-rank ${r.onShelf ? 'on-shelf' : 'checked-out'}">${r.available}</div>
       <div class="result-info">
-        <div class="result-name">${r.libraryName}${r.section ? ' - ' + r.section : ''}${isNearest ? '<span class="nearest-badge">NEAREST</span>' : ''}</div>
-        <div class="result-detail">${r.callNumber || 'No call number'}${r.onShelf ? '' : ' (checked out)'}</div>
+        <div class="result-name">${r.libraryName}${isNearest ? '<span class="nearest-badge">NEAREST</span>' : ''}</div>
+        <div class="result-detail">${detail}${r.onShelf ? '' : ' (checked out)'}</div>
       </div>
       <div class="result-dist ${r.distance != null ? '' : 'no-gps'}">${r.distance != null ? r.distance.toFixed(1) + ' mi' : ''}</div>
     `;
