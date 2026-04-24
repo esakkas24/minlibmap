@@ -168,6 +168,14 @@
   }
   #input-hint.cors-error strong { color: #900; }
 
+  #bookmarklet-hint {
+    font-size: 12px; color: #666; margin-top: 10px; text-align: center;
+  }
+  #bookmarklet-link {
+    display: inline-block; color: #1a7c3e; border: 1px solid #1a7c3e;
+    border-radius: 4px; padding: 2px 8px; text-decoration: none; cursor: grab;
+  }
+
   /* Handle for bottom sheet drag hint */
   .drag-hint {
     width: 36px; height: 4px; background: #d0d0d0; border-radius: 2px;
@@ -195,6 +203,9 @@
       <button id="find-btn">Find My Book</button>
     </div>
     <button id="try-example">Try with example data</button>
+    <div id="bookmarklet-hint">
+      Drag <a id="bookmarklet-link" href="#">MinLibMap Bookmarklet</a> to your bookmarks bar for one-click fetching from any catalog item page.
+    </div>
   </div>
 </div>
 
@@ -584,8 +595,10 @@ function parseCopyDetailsHtml(html) {
 
 // Attempt to fetch copy details for a GroupedWork UUID directly from the catalog.
 // Returns { data: parsed[], source: 'auto'|'cors-blocked'|'not-found' }.
-// The catalog does not set CORS headers, so this will be blocked by the browser in most
-// deployment contexts. The caller must handle 'cors-blocked' by falling back to manual paste.
+// The catalog returns a valid response (status 200) but does not set CORS headers,
+// so the browser blocks cross-origin reads. Cloudflare also blocks datacenter IPs,
+// ruling out CORS proxies. The caller must handle 'cors-blocked' by falling back
+// to manual paste.
 async function fetchAvailability(uuid) {
   for (const format of FORMATS_TO_TRY) {
     const url = `${CATALOG_BASE}/GroupedWork/AJAX?method=getCopyDetails` +
@@ -598,9 +611,10 @@ async function fetchAvailability(uuid) {
       const parsed = parseCopyDetailsHtml(json.modalBody);
       if (parsed.length > 0) return { data: parsed, source: 'auto' };
     } catch (e) {
-      // TypeError means network/CORS failure — no point retrying other formats.
+      // TypeError means CORS block — proxies also fail (Cloudflare blocks datacenter
+      // IPs). Return immediately; no point trying other formats.
       if (e instanceof TypeError) return { data: null, source: 'cors-blocked' };
-      // Other errors (e.g. JSON parse): continue to next format.
+      // Other errors (e.g. JSON parse failure): continue to next format.
     }
   }
   return { data: null, source: 'not-found' };
@@ -615,8 +629,55 @@ function showToast(msg, duration = 3000) {
 }
 
 // ── UI Wiring ──
-function init() {
+async function init() {
   initMap();
+
+  // ── Bookmarklet hash reader ──
+  // When the bookmarklet opens MinLibMap with #data=<base64>, decode and render
+  // immediately without any user interaction.
+  const hashMatch = window.location.hash.match(/^#data=(.+)/);
+  if (hashMatch) {
+    try {
+      const html = decodeURIComponent(escape(atob(decodeURIComponent(hashMatch[1]))));
+      const parsed = parseCopyDetailsHtml(html);
+      if (parsed.length > 0) {
+        parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
+        try {
+          const pos = await getUserLocation();
+          userLatLng = pos;
+          addUserMarker(pos.lat, pos.lng);
+        } catch (e) { userLatLng = null; }
+        history.replaceState(null, '', location.pathname);
+        showResults(parsed);
+      }
+    } catch (e) {
+      console.warn('Could not decode #data hash:', e.message);
+    }
+  }
+
+  // ── Bookmarklet link ──
+  // Set href dynamically to avoid HTML-escaping the javascript: URI.
+  // Embed the current page's URL as the target so the bookmarklet works from
+  // any instance — local dev or production — without hardcoding a URL.
+  const bookmarkletTarget = location.href.split('#')[0];
+  document.getElementById('bookmarklet-link').href = 'javascript:(function(){' +
+    'var m=location.href.match(/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i);' +
+    'if(!m){alert(\'Open a catalog item page first\');return;}' +
+    'var id=m[1],' +
+    'fmts=[\'Book\',\'Large Print Book\',\'Audiobook\',\'DVD\',\'eBook\',\'Music CD\',\'Book Club Kit\'],' +
+    'base=\'https://catalog.minlib.net\',' +
+    'target=\'' + bookmarkletTarget + '\';' +
+    '(function t(i){' +
+      'if(i>=fmts.length){alert(\'No availability data found\');return;}' +
+      'fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=\'+encodeURIComponent(fmts[i]))' +
+        '.then(function(r){return r.json();})' +
+        '.then(function(j){' +
+          'if(!j.modalBody||/unable to find/i.test(j.modalBody)){t(i+1);return;}' +
+          'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(j.modalBody)))));' +
+        '})' +
+        '.catch(function(){t(i+1);});' +
+    '})(0);' +
+  '})();';
 
   const bottomBar = document.getElementById('bottom-bar');
   const inputOverlay = document.getElementById('input-overlay');
@@ -691,9 +752,10 @@ function init() {
         // CORS fallback: guide user to manual paste
         inputHint.className = 'cors-error';
         inputHint.innerHTML =
-          `<strong>Auto-fetch blocked</strong> by browser security (CORS). ` +
-          `Please visit the catalog link, click <strong>"Where Is It?"</strong>, ` +
-          `select all text in the popup, and paste it below instead.`;
+          `<strong>Auto-fetch blocked</strong> by browser security. ` +
+          `Use the <strong>bookmarklet</strong> (below) for one-click fetching, ` +
+          `or visit the catalog link, click <strong>"Where Is It?"</strong>, ` +
+          `select all text in the popup, and paste it here instead.`;
         pasteArea.value = '';
         pasteArea.placeholder = 'Paste the "Where Is It?" table text here…';
         pasteArea.focus();
