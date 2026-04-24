@@ -631,10 +631,10 @@ function init() {
     const val = pasteArea.value.trim();
     if (!val) { inputHint.textContent = ''; inputHint.className = ''; return; }
     if (isCatalogUrl(val)) {
-      inputHint.textContent = '🔗 Catalog URL detected — will attempt auto-fetch';
+      inputHint.textContent = 'Catalog URL detected — will attempt auto-fetch';
       inputHint.className = 'url';
     } else if (/\d+\s+of\s+\d+/.test(val)) {
-      inputHint.textContent = '📋 Table format detected — ready to parse';
+      inputHint.textContent = 'Table format detected — ready to parse';
       inputHint.className = 'table';
     } else {
       inputHint.textContent = '';
@@ -691,7 +691,7 @@ function init() {
         // CORS fallback: guide user to manual paste
         inputHint.className = 'cors-error';
         inputHint.innerHTML =
-          `⚠️ <strong>Auto-fetch blocked</strong> by browser security (CORS). ` +
+          `<strong>Auto-fetch blocked</strong> by browser security (CORS). ` +
           `Please visit the catalog link, click <strong>"Where Is It?"</strong>, ` +
           `select all text in the popup, and paste it below instead.`;
         pasteArea.value = '';
