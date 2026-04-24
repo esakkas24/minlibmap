@@ -155,6 +155,19 @@
     border-radius: 50%;
   }
 
+  /* Input detection hint */
+  #input-hint {
+    font-size: 12px; min-height: 16px; margin-top: 6px;
+    padding: 0 2px; line-height: 1.4; transition: color 0.15s;
+  }
+  #input-hint.url  { color: #1a7c3e; }
+  #input-hint.table { color: #555; }
+  #input-hint.cors-error {
+    color: #b22; background: #fff3f3; border: 1px solid #f5c6c6;
+    border-radius: 6px; padding: 8px 10px; margin-top: 8px;
+  }
+  #input-hint.cors-error strong { color: #900; }
+
   /* Handle for bottom sheet drag hint */
   .drag-hint {
     width: 36px; height: 4px; background: #d0d0d0; border-radius: 2px;
@@ -173,9 +186,10 @@
 <div id="input-overlay">
   <div id="input-sheet">
     <div class="drag-hint"></div>
-    <h2>Where Is It?</h2>
-    <p>Copy the table from the Minuteman catalog's "Where is it?" popup and paste it below.</p>
-    <textarea id="paste-area" placeholder="Available Copies    Location    Call #&#10;1 of 1     Bedford - Adult    Fiction/VanderMeer&#10;0 of 1    Arlington - Adult    FIC VANDERMEER&#10;..."></textarea>
+    <h2>Find Your Book</h2>
+    <p>Paste a <strong>catalog URL</strong> (catalog.minlib.net/…) or the <strong>"Where Is It?" table</strong> from the catalog popup.</p>
+    <textarea id="paste-area" placeholder="catalog.minlib.net/GroupedWork/…&#10;&#10;— or —&#10;&#10;Available Copies    Location    Call #&#10;1 of 1     Bedford - Adult    Fiction/VanderMeer&#10;…"></textarea>
+    <div id="input-hint"></div>
     <div id="input-actions">
       <button id="cancel-btn">Cancel</button>
       <button id="find-btn">Find My Book</button>
@@ -507,6 +521,91 @@ function showResults(parsed) {
   document.getElementById('results-panel').classList.add('visible');
 }
 
+// ── URL Auto-fetch ──
+const CATALOG_BASE = 'https://catalog.minlib.net';
+// The MLN catalog appends a language suffix to GroupedWork IDs (e.g. "…cc1a-eng").
+const UUID_RE = /GroupedWork\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i;
+const FORMATS_TO_TRY = ['Book', 'Large Print Book', 'Audiobook', 'DVD', 'eBook', 'Music CD', 'Book Club Kit'];
+
+function isCatalogUrl(text) {
+  return /^https?:\/\/catalog\.minlib\.net/i.test(text) || UUID_RE.test(text);
+}
+
+function extractGroupedWorkId(text) {
+  const m = text.match(UUID_RE);
+  return m ? m[1] : null;
+}
+
+// Parse the HTML table that Aspen Discovery returns in its getCopyDetails JSON response.
+// Handles both display style 1 (Available Copies | Location | Call #)
+// and display style 2 (Volume | Location | Call # | Status | …).
+function parseCopyDetailsHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const table = doc.querySelector('.itemSummaryTable');
+  if (!table) return [];
+
+  const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim().toLowerCase());
+  const copiesIdx  = headers.findIndex(h => /available|copies/.test(h));
+  const locationIdx = headers.findIndex(h => h.includes('location'));
+  const callIdx    = headers.findIndex(h => /call/.test(h));
+  const statusIdx  = headers.findIndex(h => h.includes('status'));
+
+  if (locationIdx === -1) return [];
+
+  const results = [];
+  table.querySelectorAll('tbody tr').forEach(row => {
+    const cells = [...row.querySelectorAll('td')].map(td => td.textContent.trim());
+    if (!cells.length) return;
+
+    let available = 0, total = 0;
+    if (copiesIdx >= 0 && cells[copiesIdx]) {
+      const m = cells[copiesIdx].match(/(\d+)\s+of\s+(\d+)/);
+      if (m) { available = parseInt(m[1]); total = parseInt(m[2]); }
+      else if (/always available/i.test(cells[copiesIdx])) { available = 9999; total = 9999; }
+    } else if (statusIdx >= 0 && cells[statusIdx]) {
+      // Display style 2: derive on-shelf from status text
+      available = /on shelf/i.test(cells[statusIdx]) ? 1 : 0;
+      total = 1;
+    }
+
+    const locationPart = (cells[locationIdx] || '').trim();
+    const callNumber   = callIdx >= 0 ? (cells[callIdx] || '').trim() : '';
+    if (!locationPart) return;
+
+    const di = locationPart.lastIndexOf(' - ');
+    const libraryName = di > 0 ? locationPart.substring(0, di).trim() : locationPart;
+    const section     = di > 0 ? locationPart.substring(di + 3).trim() : '';
+    const library     = matchLibrary(libraryName);
+
+    results.push({ available, total, libraryName, section, callNumber, onShelf: available > 0, library });
+  });
+  return results;
+}
+
+// Attempt to fetch copy details for a GroupedWork UUID directly from the catalog.
+// Returns { data: parsed[], source: 'auto'|'cors-blocked'|'not-found' }.
+// The catalog does not set CORS headers, so this will be blocked by the browser in most
+// deployment contexts. The caller must handle 'cors-blocked' by falling back to manual paste.
+async function fetchAvailability(uuid) {
+  for (const format of FORMATS_TO_TRY) {
+    const url = `${CATALOG_BASE}/GroupedWork/AJAX?method=getCopyDetails` +
+                `&id=${uuid}&recordId=${uuid}&format=${encodeURIComponent(format)}`;
+    try {
+      const resp = await fetch(url, { mode: 'cors', credentials: 'include' });
+      if (!resp.ok) continue;
+      const json = await resp.json();
+      if (!json.modalBody || /unable to find/i.test(json.modalBody)) continue;
+      const parsed = parseCopyDetailsHtml(json.modalBody);
+      if (parsed.length > 0) return { data: parsed, source: 'auto' };
+    } catch (e) {
+      // TypeError means network/CORS failure — no point retrying other formats.
+      if (e instanceof TypeError) return { data: null, source: 'cors-blocked' };
+      // Other errors (e.g. JSON parse): continue to next format.
+    }
+  }
+  return { data: null, source: 'not-found' };
+}
+
 // ── Toast ──
 function showToast(msg, duration = 3000) {
   const toast = document.getElementById('toast');
@@ -524,6 +623,24 @@ function init() {
   const pasteArea = document.getElementById('paste-area');
   const findBtn = document.getElementById('find-btn');
   const resultsPanel = document.getElementById('results-panel');
+
+  const inputHint = document.getElementById('input-hint');
+
+  // Real-time input type detection badge
+  pasteArea.addEventListener('input', () => {
+    const val = pasteArea.value.trim();
+    if (!val) { inputHint.textContent = ''; inputHint.className = ''; return; }
+    if (isCatalogUrl(val)) {
+      inputHint.textContent = '🔗 Catalog URL detected — will attempt auto-fetch';
+      inputHint.className = 'url';
+    } else if (/\d+\s+of\s+\d+/.test(val)) {
+      inputHint.textContent = '📋 Table format detected — ready to parse';
+      inputHint.className = 'table';
+    } else {
+      inputHint.textContent = '';
+      inputHint.className = '';
+    }
+  });
 
   // Open input sheet
   document.getElementById('paste-btn').addEventListener('click', () => {
@@ -547,19 +664,66 @@ function init() {
   // Find My Book
   findBtn.addEventListener('click', async () => {
     const text = pasteArea.value.trim();
-    if (!text) { showToast('Please paste availability data first'); return; }
-
-    const parsed = parseAvailability(text);
-    if (parsed.length === 0) {
-      showToast('Could not parse any availability data. Make sure you copied from "Where is it?"');
-      return;
-    }
-
-    // Log unmatched for debugging
-    parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
+    if (!text) { showToast('Please paste a catalog URL or availability data'); return; }
 
     findBtn.disabled = true;
-    findBtn.innerHTML = '<span class="spinner"></span>Locating...';
+    inputHint.textContent = '';
+    inputHint.className = '';
+
+    let parsed = null;
+
+    if (isCatalogUrl(text)) {
+      // ── URL path: attempt auto-fetch ──
+      const uuid = extractGroupedWorkId(text);
+      if (!uuid) {
+        showToast('Could not find a GroupedWork ID in that URL. Try pasting the full item page URL.');
+        findBtn.disabled = false;
+        return;
+      }
+
+      findBtn.innerHTML = '<span class="spinner"></span>Fetching…';
+      const result = await fetchAvailability(uuid);
+
+      if (result.source === 'auto' && result.data.length > 0) {
+        parsed = result.data;
+
+      } else if (result.source === 'cors-blocked') {
+        // CORS fallback: guide user to manual paste
+        inputHint.className = 'cors-error';
+        inputHint.innerHTML =
+          `⚠️ <strong>Auto-fetch blocked</strong> by browser security (CORS). ` +
+          `Please visit the catalog link, click <strong>"Where Is It?"</strong>, ` +
+          `select all text in the popup, and paste it below instead.`;
+        pasteArea.value = '';
+        pasteArea.placeholder = 'Paste the "Where Is It?" table text here…';
+        pasteArea.focus();
+        findBtn.disabled = false;
+        findBtn.textContent = 'Find My Book';
+        return;
+
+      } else {
+        showToast('No availability data found for that URL. Try a different format or paste manually.');
+        findBtn.disabled = false;
+        findBtn.textContent = 'Find My Book';
+        return;
+      }
+
+    } else {
+      // ── Paste path: parse table text ──
+      findBtn.innerHTML = '<span class="spinner"></span>Parsing…';
+      parsed = parseAvailability(text);
+      if (parsed.length === 0) {
+        showToast('Could not parse availability data. Make sure you copied from the "Where is it?" popup.');
+        findBtn.disabled = false;
+        findBtn.textContent = 'Find My Book';
+        return;
+      }
+    }
+
+    // Log unmatched branches to console for debugging (see issue #4)
+    parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
+
+    findBtn.innerHTML = '<span class="spinner"></span>Locating…';
 
     // Try GPS
     try {
@@ -574,7 +738,6 @@ function init() {
     findBtn.disabled = false;
     findBtn.textContent = 'Find My Book';
     inputOverlay.classList.remove('visible');
-
     showResults(parsed);
   });
 
