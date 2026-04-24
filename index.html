@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a7c3e">
+<title>MinLibMap</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+
+  /* Bottom bar - State A */
+  #bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+    padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    background: #fff; border-top: 1px solid #e0e0e0;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.1);
+    display: flex; gap: 10px; align-items: center;
+  }
+  #paste-btn {
+    flex: 1; padding: 14px 20px; border: none; border-radius: 10px;
+    background: #1a7c3e; color: #fff; font-size: 16px; font-weight: 600;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  #paste-btn:active { background: #14612f; }
+
+  /* Input sheet overlay */
+  #input-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000;
+    background: rgba(0,0,0,0.4); display: none; opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  #input-overlay.visible { display: flex; opacity: 1; }
+  #input-sheet {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: #fff; border-radius: 16px 16px 0 0;
+    padding: 20px 16px; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    max-height: 80vh; display: flex; flex-direction: column;
+    transform: translateY(100%); transition: transform 0.3s ease;
+  }
+  #input-overlay.visible #input-sheet { transform: translateY(0); }
+  #input-sheet h2 { font-size: 18px; margin-bottom: 4px; color: #1a1a1a; }
+  #input-sheet p { font-size: 13px; color: #666; margin-bottom: 12px; line-height: 1.4; }
+  #paste-area {
+    width: 100%; min-height: 140px; border: 2px solid #d0d0d0; border-radius: 10px;
+    padding: 12px; font-size: 14px; font-family: monospace; resize: none;
+    -webkit-appearance: none; outline: none;
+  }
+  #paste-area:focus { border-color: #1a7c3e; }
+  #input-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+  #find-btn {
+    flex: 1; padding: 14px; border: none; border-radius: 10px;
+    background: #1a7c3e; color: #fff; font-size: 16px; font-weight: 600;
+    cursor: pointer;
+  }
+  #find-btn:active { background: #14612f; }
+  #find-btn:disabled { background: #a0a0a0; }
+  #try-example {
+    background: none; border: none; color: #1a7c3e; font-size: 13px;
+    cursor: pointer; text-decoration: underline; padding: 8px;
+  }
+  #cancel-btn {
+    padding: 14px 18px; border: 1px solid #d0d0d0; border-radius: 10px;
+    background: #fff; color: #333; font-size: 16px; cursor: pointer;
+  }
+
+  /* Results panel - State B */
+  #results-panel {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+    background: #fff; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    display: none; flex-direction: column;
+    max-height: 55vh; overflow: hidden;
+  }
+  #results-panel.visible { display: flex; }
+  #results-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 16px 8px; flex-shrink: 0;
+  }
+  #results-header h2 { font-size: 16px; color: #1a1a1a; }
+  #clear-btn {
+    background: none; border: 1px solid #d0d0d0; border-radius: 8px;
+    padding: 6px 14px; font-size: 13px; color: #555; cursor: pointer;
+  }
+  #results-status {
+    padding: 0 16px 8px; font-size: 13px; color: #666; flex-shrink: 0;
+  }
+  #results-list {
+    overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .result-row {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-top: 1px solid #f0f0f0; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .result-row:active { background: #f5f5f5; }
+  .result-row.nearest { background: #edf7f0; }
+  .result-rank {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; margin-right: 12px;
+  }
+  .result-rank.on-shelf { background: #1a7c3e; color: #fff; }
+  .result-rank.checked-out { background: #ccc; color: #666; }
+  .result-info { flex: 1; min-width: 0; }
+  .result-name { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+  .result-detail { font-size: 12px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .result-dist { font-size: 13px; color: #1a7c3e; font-weight: 600; flex-shrink: 0; margin-left: 10px; text-align: right; }
+  .result-dist.no-gps { color: #aaa; }
+  .nearest-badge { font-size: 10px; font-weight: 700; color: #d4a017; margin-left: 6px; }
+
+  /* Error toast */
+  #toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: #333; color: #fff; padding: 10px 20px; border-radius: 8px;
+    font-size: 14px; z-index: 3000; display: none; max-width: 90%;
+    text-align: center;
+  }
+  #toast.visible { display: block; }
+
+  /* Loading spinner */
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Leaflet popup override */
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 14px; line-height: 1.5; }
+  .popup-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .popup-avail { color: #1a7c3e; font-weight: 600; }
+  .popup-avail.out { color: #b22; }
+  .popup-call { color: #666; font-size: 13px; }
+  .popup-directions {
+    display: inline-block; margin-top: 8px; padding: 6px 14px;
+    background: #1a7c3e; color: #fff; border-radius: 6px;
+    text-decoration: none; font-size: 13px; font-weight: 600;
+  }
+
+  /* Pulsing user dot */
+  @keyframes pulse { 0%,100% { transform: scale(1); opacity: 0.7; } 50% { transform: scale(2.2); opacity: 0; } }
+  .user-pulse {
+    width: 24px; height: 24px; background: rgba(33,150,243,0.3);
+    border-radius: 50%; position: absolute;
+    animation: pulse 2s ease-in-out infinite;
+    left: -4px; top: -4px;
+  }
+  .user-dot {
+    width: 16px; height: 16px; background: #2196F3;
+    border: 3px solid #fff; border-radius: 50; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    border-radius: 50%;
+  }
+
+  /* Handle for bottom sheet drag hint */
+  .drag-hint {
+    width: 36px; height: 4px; background: #d0d0d0; border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="bottom-bar">
+  <button id="paste-btn">Paste Availability Data</button>
+</div>
+
+<div id="input-overlay">
+  <div id="input-sheet">
+    <div class="drag-hint"></div>
+    <h2>Where Is It?</h2>
+    <p>Copy the table from the Minuteman catalog's "Where is it?" popup and paste it below.</p>
+    <textarea id="paste-area" placeholder="Available Copies    Location    Call #&#10;1 of 1     Bedford - Adult    Fiction/VanderMeer&#10;0 of 1    Arlington - Adult    FIC VANDERMEER&#10;..."></textarea>
+    <div id="input-actions">
+      <button id="cancel-btn">Cancel</button>
+      <button id="find-btn">Find My Book</button>
+    </div>
+    <button id="try-example">Try with example data</button>
+  </div>
+</div>
+
+<div id="results-panel">
+  <div class="drag-hint"></div>
+  <div id="results-header">
+    <h2 id="results-title">Results</h2>
+    <button id="clear-btn">Clear</button>
+  </div>
+  <div id="results-status"></div>
+  <div id="results-list"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Library Dataset ──
+const LIBRARIES = [
+  // Public Libraries
+  { id:"acton", name:"Acton Memorial Library", lat:42.4851, lng:-71.4326, aliases:["Acton"] },
+  { id:"arlington", name:"Robbins Library", lat:42.4157, lng:-71.1565, aliases:["Arlington"] },
+  { id:"ashland", name:"Ashland Public Library", lat:42.2611, lng:-71.4636, aliases:["Ashland"] },
+  { id:"bedford", name:"Bedford Free Public Library", lat:42.4923, lng:-71.2842, aliases:["Bedford"] },
+  { id:"belmont", name:"Belmont Public Library", lat:42.3946, lng:-71.1722, aliases:["Belmont"] },
+  { id:"brookline-main", name:"Public Library of Brookline (Main)", lat:42.3346, lng:-71.1214, aliases:["Brookline"] },
+  { id:"brookline-coolidge", name:"Brookline - Coolidge Corner", lat:42.3435, lng:-71.1191, aliases:["Brookline Coolidge Corner","Brookline Coolidge"] },
+  { id:"brookline-putterham", name:"Brookline - Putterham", lat:42.3146, lng:-71.1529, aliases:["Brookline Putterham"] },
+  { id:"cambridge-main", name:"Cambridge Public Library (Main)", lat:42.3736, lng:-71.1097, aliases:["Cambridge"] },
+  { id:"cambridge-oneill", name:"Cambridge - O'Neill Branch", lat:42.3922, lng:-71.1280, aliases:["Cambridge O'Neill","Cambridge O'Connell"] },
+  { id:"cambridge-boudreau", name:"Cambridge - Boudreau Branch", lat:42.3835, lng:-71.1304, aliases:["Cambridge Boudreau"] },
+  { id:"cambridge-collins", name:"Cambridge - Collins Branch", lat:42.3769, lng:-71.1469, aliases:["Cambridge Collins"] },
+  { id:"cambridge-csq", name:"Cambridge - Central Square", lat:42.3649, lng:-71.1035, aliases:["Cambridge Central Square","Cambridge Central"] },
+  { id:"cambridge-valente", name:"Cambridge - Valente Branch", lat:42.3725, lng:-71.0876, aliases:["Cambridge Valente"] },
+  { id:"concord", name:"Concord Free Public Library", lat:42.4604, lng:-71.3489, aliases:["Concord"] },
+  { id:"dedham", name:"Dedham Public Library", lat:42.2478, lng:-71.1762, aliases:["Dedham"] },
+  { id:"dover", name:"Dover Town Library", lat:42.2469, lng:-71.2793, aliases:["Dover"] },
+  { id:"framingham-main", name:"Framingham Public Library", lat:42.2793, lng:-71.4161, aliases:["Framingham"] },
+  { id:"framingham-mcauliffe", name:"Framingham - McAuliffe Branch", lat:42.3290, lng:-71.4322, aliases:["Framingham McAuliffe"] },
+  { id:"franklin", name:"Franklin Public Library", lat:42.0853, lng:-71.4000, aliases:["Franklin"] },
+  { id:"holliston", name:"Holliston Public Library", lat:42.2003, lng:-71.4284, aliases:["Holliston"] },
+  { id:"lexington", name:"Cary Memorial Library", lat:42.4493, lng:-71.2312, aliases:["Lexington"] },
+  { id:"lincoln", name:"Lincoln Public Library", lat:42.4260, lng:-71.3052, aliases:["Lincoln"] },
+  { id:"maynard", name:"Maynard Public Library", lat:42.4337, lng:-71.4500, aliases:["Maynard"] },
+  { id:"medfield", name:"Medfield Public Library", lat:42.1870, lng:-71.3055, aliases:["Medfield"] },
+  { id:"medford", name:"Medford Public Library", lat:42.4197, lng:-71.1135, aliases:["Medford"] },
+  { id:"medway", name:"Medway Public Library", lat:42.1440, lng:-71.4299, aliases:["Medway"] },
+  { id:"millis", name:"Millis Public Library", lat:42.1659, lng:-71.3641, aliases:["Millis"] },
+  { id:"natick", name:"Morse Institute Library", lat:42.2835, lng:-71.3494, aliases:["Natick"] },
+  { id:"needham", name:"Needham Free Public Library", lat:42.2879, lng:-71.2356, aliases:["Needham"] },
+  { id:"newton", name:"Newton Free Library", lat:42.3357, lng:-71.2088, aliases:["Newton"] },
+  { id:"norwood", name:"Morrill Memorial Library", lat:42.1913, lng:-71.2038, aliases:["Norwood"] },
+  { id:"sherborn", name:"Sherborn Library", lat:42.2389, lng:-71.3696, aliases:["Sherborn"] },
+  { id:"somerville-central", name:"Somerville Public Library (Central)", lat:42.3858, lng:-71.0944, aliases:["Somerville"] },
+  { id:"somerville-east", name:"Somerville - East Branch", lat:42.3879, lng:-71.0836, aliases:["Somerville East"] },
+  { id:"somerville-west", name:"Somerville - West Branch", lat:42.3965, lng:-71.1202, aliases:["Somerville West"] },
+  { id:"stow", name:"Randall Library", lat:42.4370, lng:-71.5065, aliases:["Stow"] },
+  { id:"sudbury", name:"Goodnow Library", lat:42.3633, lng:-71.4169, aliases:["Sudbury"] },
+  { id:"waltham", name:"Waltham Public Library", lat:42.3765, lng:-71.2357, aliases:["Waltham"] },
+  { id:"watertown", name:"Watertown Free Public Library", lat:42.3676, lng:-71.1867, aliases:["Watertown"] },
+  { id:"wayland", name:"Wayland Free Public Library", lat:42.3637, lng:-71.3612, aliases:["Wayland"] },
+  { id:"wellesley", name:"Wellesley Free Library", lat:42.2966, lng:-71.2939, aliases:["Wellesley"] },
+  { id:"weston", name:"Weston Public Library", lat:42.3621, lng:-71.2946, aliases:["Weston"] },
+  { id:"westwood", name:"Westwood Public Library", lat:42.2258, lng:-71.2217, aliases:["Westwood"] },
+  { id:"winchester", name:"Winchester Public Library", lat:42.4522, lng:-71.1372, aliases:["Winchester"] },
+  { id:"woburn", name:"Woburn Public Library", lat:42.4793, lng:-71.1524, aliases:["Woburn"] },
+  // Academic Libraries
+  { id:"dean", name:"Dean College Library", lat:42.0834, lng:-71.4009, aliases:["Dean College","Dean"] },
+  { id:"framingham-state", name:"Framingham State University Library", lat:42.2999, lng:-71.4361, aliases:["Framingham State","FSU"] },
+  { id:"lasell", name:"Lasell University Library", lat:42.3430, lng:-71.2417, aliases:["Lasell"] },
+  { id:"olin", name:"Olin College Library", lat:42.2928, lng:-71.2644, aliases:["Olin College","Olin"] },
+  { id:"regis", name:"Regis College Library", lat:42.3507, lng:-71.3085, aliases:["Regis College","Regis"] },
+];
+
+// ── Example data (from real catalog: Authority by VanderMeer) ──
+const EXAMPLE_DATA = `Available Copies\tLocation\tCall #
+0 of 1\tArlington - Adult\tFIC VANDERMEER, J.
+1 of 1\tBedford - Adult\tFiction/VanderMeer
+0 of 1\tBelmont - Adult\tSCI FIC VAN
+1 of 1\tCambridge O'Neill - Adult\tSCI FIC VanderMeer, Jeff
+3 of 4\tCambridge - Adult\tSCI FIC VanderMeer, Jeff
+1 of 1\tConcord - Adult\tSCI FIC VanderMeer, J.
+1 of 1\tFranklin - Paperback\tPB SCIENCE FICTION VANDERMEER 2014
+1 of 1\tLexington - Adult\tSCIENCE FICTION VANDERMEER
+1 of 1\tMaynard - Adult\tSCIENCE FICTION VanderMeer
+1 of 1\tMedford - Adult\tSFF VanderMeer
+1 of 1\tNatick - Adult\tFICTION / VanderMeer
+1 of 1\tNeedham - Adult\tSCIENCE FICTION VANDERMEER, J. SOUTHERN #2
+0 of 1\tNewton - Adult\tSCIFI/FANTASY VANDERMEER, J.
+0 of 1\tSudbury - Adult\tSCIENCE FICTION / VANDERMEER J
+1 of 2\tWatertown - Adult\tSCI-FI VANDERMEER J 2014
+1 of 1\tWellesley - Adult\tSCIENCE FICTION VanderMeer, J.
+0 of 1\tWeston - Adult\tFICTION VANDERMEER, J.
+1 of 1\tWestwood - Adult\tSCI FIC Vandermeer`;
+
+// ── Globals ──
+let map, userLatLng = null, allMarkers = {}, resultMarkers = [], userMarker = null;
+
+// ── Init Map ──
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView([42.36, -71.22], 10);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  L.control.attribution({ position: 'bottomright' }).addTo(map);
+
+  LIBRARIES.forEach(lib => {
+    const m = L.circleMarker([lib.lat, lib.lng], {
+      radius: 5, fillColor: '#aaa', color: '#888', weight: 1, fillOpacity: 0.5
+    }).addTo(map);
+    m.bindTooltip(lib.name, { direction: 'top', offset: [0, -6] });
+    allMarkers[lib.id] = m;
+  });
+}
+
+// ── Parser ──
+function parseAvailability(text) {
+  const lines = text.trim().split(/\n/);
+  const results = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || /available\s+cop/i.test(line) || /^location/i.test(line) || /^call\s*#/i.test(line)) continue;
+    if (/^where\s+is\s+it/i.test(line)) continue;
+
+    // Try to extract "X of Y"
+    const copyMatch = line.match(/(\d+)\s+of\s+(\d+)/);
+    if (!copyMatch) continue;
+
+    const available = parseInt(copyMatch[1]);
+    const total = parseInt(copyMatch[2]);
+
+    // Everything after the "X of Y" pattern
+    const afterCopies = line.substring(line.indexOf(copyMatch[0]) + copyMatch[0].length);
+
+    // Split remaining by tab or 3+ spaces
+    const parts = afterCopies.split(/\t|\s{3,}/).map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) continue;
+
+    const locationPart = parts[0];
+    const callNumber = parts.slice(1).join(' ');
+
+    // Split location on last " - "
+    const dashIdx = locationPart.lastIndexOf(' - ');
+    const libraryName = dashIdx > 0 ? locationPart.substring(0, dashIdx).trim() : locationPart.trim();
+    const section = dashIdx > 0 ? locationPart.substring(dashIdx + 3).trim() : '';
+
+    const library = matchLibrary(libraryName);
+
+    results.push({
+      available, total, libraryName, section, callNumber,
+      onShelf: available > 0,
+      library // may be null if unmatched
+    });
+  }
+  return results;
+}
+
+function matchLibrary(name) {
+  const normalized = name.trim().toLowerCase();
+  let bestMatch = null, bestLen = 0;
+  for (const lib of LIBRARIES) {
+    for (const alias of lib.aliases) {
+      const a = alias.toLowerCase();
+      if (normalized === a || normalized.startsWith(a)) {
+        if (a.length > bestLen) { bestMatch = lib; bestLen = a.length; }
+      }
+    }
+  }
+  return bestMatch;
+}
+
+// ── Haversine ──
+function distanceMiles(lat1, lng1, lat2, lng2) {
+  const R = 3959;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── GPS ──
+function getUserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('Geolocation not supported')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => reject(err),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  });
+}
+
+function addUserMarker(lat, lng) {
+  if (userMarker) map.removeLayer(userMarker);
+  const icon = L.divIcon({
+    className: '',
+    html: '<div style="position:relative;width:16px;height:16px;"><div class="user-pulse"></div><div class="user-dot"></div></div>',
+    iconSize: [16, 16], iconAnchor: [8, 8]
+  });
+  userMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(map);
+  userMarker.bindTooltip('You are here', { direction: 'top', offset: [0, -12] });
+}
+
+// ── Display Results ──
+function showResults(parsed) {
+  // Clear old result markers
+  resultMarkers.forEach(m => map.removeLayer(m));
+  resultMarkers = [];
+
+  // Reset all base markers to gray
+  Object.values(allMarkers).forEach(m => m.setStyle({ fillColor: '#aaa', color: '#888', radius: 5, fillOpacity: 0.5 }));
+
+  // Compute distances
+  parsed.forEach(r => {
+    if (r.library && userLatLng) {
+      r.distance = distanceMiles(userLatLng.lat, userLatLng.lng, r.library.lat, r.library.lng);
+    } else {
+      r.distance = null;
+    }
+  });
+
+  // Sort: on-shelf first, then by distance (or alphabetically)
+  const onShelf = parsed.filter(r => r.onShelf);
+  const checkedOut = parsed.filter(r => !r.onShelf);
+
+  if (userLatLng) {
+    onShelf.sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999));
+    checkedOut.sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999));
+  } else {
+    onShelf.sort((a, b) => a.libraryName.localeCompare(b.libraryName));
+    checkedOut.sort((a, b) => a.libraryName.localeCompare(b.libraryName));
+  }
+
+  const sorted = [...onShelf, ...checkedOut];
+
+  // Update map markers
+  const bounds = [];
+  if (userLatLng) bounds.push([userLatLng.lat, userLatLng.lng]);
+
+  sorted.forEach((r, i) => {
+    if (!r.library) return;
+    const isOnShelf = r.onShelf;
+    const isNearest = isOnShelf && i === 0;
+
+    const color = isOnShelf ? '#1a7c3e' : '#cc3333';
+    const radius = isNearest ? 10 : (isOnShelf ? 7 : 5);
+    const fillOpacity = isOnShelf ? 0.85 : 0.4;
+
+    // Style the base marker
+    const base = allMarkers[r.library.id];
+    if (base) base.setStyle({ fillColor: color, color: isOnShelf ? '#0f5c2a' : '#993333', radius, fillOpacity });
+
+    // Add popup
+    const popupHtml = `
+      <div class="popup-name">${r.library.name}</div>
+      <div class="${isOnShelf ? 'popup-avail' : 'popup-avail out'}">${r.available} of ${r.total} available</div>
+      ${r.section ? `<div style="color:#888;font-size:12px">${r.section}</div>` : ''}
+      ${r.callNumber ? `<div class="popup-call">${r.callNumber}</div>` : ''}
+      ${r.distance != null ? `<div style="margin-top:4px;font-size:13px">${r.distance.toFixed(1)} mi away</div>` : ''}
+      <a class="popup-directions" href="https://www.google.com/maps/dir/?api=1&destination=${r.library.lat},${r.library.lng}" target="_blank" rel="noopener">Get Directions</a>
+    `;
+    if (base) base.bindPopup(popupHtml);
+
+    if (isOnShelf) bounds.push([r.library.lat, r.library.lng]);
+  });
+
+  // Fit map
+  if (bounds.length > 0) {
+    if (bounds.length === 1) {
+      map.setView(bounds[0], 14);
+    } else {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+    }
+  }
+
+  // Open nearest popup
+  if (onShelf.length > 0 && onShelf[0].library) {
+    const nearest = allMarkers[onShelf[0].library.id];
+    if (nearest) setTimeout(() => nearest.openPopup(), 500);
+  }
+
+  // Build results list
+  const resultsTitle = document.getElementById('results-title');
+  const resultsStatus = document.getElementById('results-status');
+  const resultsList = document.getElementById('results-list');
+
+  resultsTitle.textContent = onShelf.length > 0
+    ? `${onShelf.length} on shelf`
+    : 'All checked out';
+
+  const gpsNote = userLatLng ? '' : ' (enable location for distances)';
+  resultsStatus.textContent = `${parsed.length} locations found${gpsNote}`;
+
+  resultsList.innerHTML = '';
+  sorted.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'result-row' + (r.onShelf && i === 0 && userLatLng ? ' nearest' : '');
+
+    const isNearest = r.onShelf && i === 0;
+    row.innerHTML = `
+      <div class="result-rank ${r.onShelf ? 'on-shelf' : 'checked-out'}">${r.available}</div>
+      <div class="result-info">
+        <div class="result-name">${r.libraryName}${r.section ? ' - ' + r.section : ''}${isNearest ? '<span class="nearest-badge">NEAREST</span>' : ''}</div>
+        <div class="result-detail">${r.callNumber || 'No call number'}${r.onShelf ? '' : ' (checked out)'}</div>
+      </div>
+      <div class="result-dist ${r.distance != null ? '' : 'no-gps'}">${r.distance != null ? r.distance.toFixed(1) + ' mi' : ''}</div>
+    `;
+
+    if (r.library) {
+      row.addEventListener('click', () => {
+        map.flyTo([r.library.lat, r.library.lng], 15, { duration: 0.8 });
+        const marker = allMarkers[r.library.id];
+        if (marker) setTimeout(() => marker.openPopup(), 850);
+      });
+    }
+
+    resultsList.appendChild(row);
+  });
+
+  // Show results panel, hide bottom bar
+  document.getElementById('bottom-bar').style.display = 'none';
+  document.getElementById('results-panel').classList.add('visible');
+}
+
+// ── Toast ──
+function showToast(msg, duration = 3000) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  setTimeout(() => toast.classList.remove('visible'), duration);
+}
+
+// ── UI Wiring ──
+function init() {
+  initMap();
+
+  const bottomBar = document.getElementById('bottom-bar');
+  const inputOverlay = document.getElementById('input-overlay');
+  const pasteArea = document.getElementById('paste-area');
+  const findBtn = document.getElementById('find-btn');
+  const resultsPanel = document.getElementById('results-panel');
+
+  // Open input sheet
+  document.getElementById('paste-btn').addEventListener('click', () => {
+    inputOverlay.classList.add('visible');
+    setTimeout(() => pasteArea.focus(), 350);
+  });
+
+  // Close input sheet
+  document.getElementById('cancel-btn').addEventListener('click', () => {
+    inputOverlay.classList.remove('visible');
+  });
+  inputOverlay.addEventListener('click', e => {
+    if (e.target === inputOverlay) inputOverlay.classList.remove('visible');
+  });
+
+  // Try example
+  document.getElementById('try-example').addEventListener('click', () => {
+    pasteArea.value = EXAMPLE_DATA;
+  });
+
+  // Find My Book
+  findBtn.addEventListener('click', async () => {
+    const text = pasteArea.value.trim();
+    if (!text) { showToast('Please paste availability data first'); return; }
+
+    const parsed = parseAvailability(text);
+    if (parsed.length === 0) {
+      showToast('Could not parse any availability data. Make sure you copied from "Where is it?"');
+      return;
+    }
+
+    // Log unmatched for debugging
+    parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
+
+    findBtn.disabled = true;
+    findBtn.innerHTML = '<span class="spinner"></span>Locating...';
+
+    // Try GPS
+    try {
+      const pos = await getUserLocation();
+      userLatLng = pos;
+      addUserMarker(pos.lat, pos.lng);
+    } catch (e) {
+      console.log('GPS unavailable:', e.message);
+      userLatLng = null;
+    }
+
+    findBtn.disabled = false;
+    findBtn.textContent = 'Find My Book';
+    inputOverlay.classList.remove('visible');
+
+    showResults(parsed);
+  });
+
+  // Clear / Start Over
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    resultsPanel.classList.remove('visible');
+    bottomBar.style.display = 'flex';
+    pasteArea.value = '';
+
+    // Reset markers
+    Object.values(allMarkers).forEach(m => {
+      m.setStyle({ fillColor: '#aaa', color: '#888', radius: 5, fillOpacity: 0.5 });
+      m.closePopup();
+      m.unbindPopup();
+    });
+
+    if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+    userLatLng = null;
+
+    map.setView([42.36, -71.22], 10);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
