@@ -45,7 +45,7 @@
   }
   #input-overlay.visible #input-sheet { transform: translateY(0); }
   #input-sheet h2 { font-size: 18px; margin-bottom: 4px; color: #1a1a1a; }
-  #input-sheet p { font-size: 13px; color: #666; margin-bottom: 12px; line-height: 1.4; }
+  #input-sheet p { font-size: 14px; color: #1a1a1a; margin-bottom: 12px; line-height: 1.4; }
   #paste-area {
     width: 100%; min-height: 140px; border: 2px solid #d0d0d0; border-radius: 10px;
     padding: 12px; font-size: 14px; font-family: monospace; resize: none;
@@ -63,6 +63,7 @@
   #try-example {
     background: none; border: none; color: #1a7c3e; font-size: 13px;
     cursor: pointer; text-decoration: underline; padding: 8px;
+    align-self: flex-start; padding-left: 0;
   }
   #cancel-btn {
     padding: 14px 18px; border: 1px solid #d0d0d0; border-radius: 10px;
@@ -163,7 +164,10 @@
   #input-hint.table { color: #555; }
 
   #bookmarklet-hint {
-    font-size: 12px; color: #666; margin-top: 10px; text-align: center;
+    font-size: 14px; color: #1a1a1a; margin-top: 10px; text-align: left; line-height: 1.4;
+  }
+  .or-divider {
+    font-size: 13px; color: #666; margin: 8px 0; text-align: left;
   }
   #bookmarklet-link {
     display: inline-block; color: #1a7c3e; border: 1px solid #1a7c3e;
@@ -182,7 +186,7 @@
 <div id="map"></div>
 
 <div id="bottom-bar">
-  <button id="paste-btn">Paste Availability Data</button>
+  <button id="paste-btn">Find My Book</button>
 </div>
 
 <div id="input-overlay">
@@ -192,13 +196,14 @@
     <div id="bookmarklet-hint">
       Drag <a id="bookmarklet-link" href="#">MinLibMap Bookmarklet</a> to your bookmarks bar for one-click fetching from any catalog item page.
     </div>
-    <p>Or paste the <strong>"Where Is It?" table</strong> from the catalog popup.</p>
-    <textarea id="paste-area" placeholder="Available Copies    Location    Call #&#10;1 of 1     Bedford - Adult    Fiction/VanderMeer&#10;…"></textarea>
+    <p class="or-divider"><strong>OR</strong></p>
+    <p>Paste the <strong>"Where Is It?"</strong> table from the catalog popup.</p>
+    <textarea id="paste-area" placeholder="Available  Copies  Location  Call #&#10;1 of 1 Bedford - Adult Fiction/VanderMeer&#10;1 of 1 Bedford - Adult Fiction/VanderMeer&#10;0 of 1	Belmont - Adult	SCI FIC VAN&#10;..."></textarea>
     <button id="try-example">Try with example data</button>
     <div id="input-hint"></div>
     <div id="input-actions">
       <button id="cancel-btn">Cancel</button>
-      <button id="find-btn">Find My Book</button>
+      <button id="find-btn">Search</button>
     </div>
   </div>
 </div>
