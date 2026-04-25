@@ -691,7 +691,9 @@ async function init() {
     // any instance — local dev or production — without hardcoding a URL.
     const bookmarkletTarget = location.href.split('#')[0];
     bookmarkletLink.href = 'javascript:(function(){' +
-      'var m=location.href.match(/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i);' +
+      'var p=/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i,' +
+      'm=location.href.match(p);' +
+      'if(!m){var as=document.querySelectorAll(\'a[href*="/GroupedWork/"]\');for(var i=0;i<as.length;i++){m=as[i].href.match(p);if(m)break;}}' +
       'if(!m){alert(\'Open a catalog item page first\');return;}' +
       'var id=m[1],' +
       'base=\'https://catalog.minlib.net\',' +
