@@ -562,7 +562,7 @@ function showResults(parsed) {
     if (r.library) {
       row.addEventListener('click', () => {
         const targetPx = map.project([r.library.lat, r.library.lng], 15);
-        const offsetPx = map.getSize().y * 0.25;
+        const offsetPx = map.getSize().y * 0.18;
         const adjustedLatLng = map.unproject(targetPx.add([0, offsetPx]), 15);
         map.flyTo(adjustedLatLng, 15, { duration: 0.8 });
         const marker = allMarkers[r.library.id];
