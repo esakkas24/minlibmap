@@ -180,6 +180,9 @@
     display: inline-block; color: #1a7c3e; border: 1px solid #1a7c3e;
     border-radius: 4px; padding: 2px 8px; text-decoration: none; cursor: grab;
   }
+  @media (hover: none) {
+    #bookmarklet-link { cursor: pointer; }
+  }
 
   /* Handle for bottom sheet drag hint */
   .drag-hint {
@@ -671,25 +674,38 @@ async function init() {
     }
   }
 
-  // ── Bookmarklet link ──
-  // Set href dynamically to avoid HTML-escaping the javascript: URI.
-  // Embed the current page's URL as the target so the bookmarklet works from
-  // any instance — local dev or production — without hardcoding a URL.
-  const bookmarkletTarget = location.href.split('#')[0];
-  document.getElementById('bookmarklet-link').href = 'javascript:(function(){' +
-    'var m=location.href.match(/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i);' +
-    'if(!m){alert(\'Open a catalog item page first\');return;}' +
-    'var id=m[1],' +
-    'base=\'https://catalog.minlib.net\',' +
-    'target=\'' + bookmarkletTarget + '\';' +
-    'fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=Book\')' +
-      '.then(function(r){return r.json();})' +
-      '.then(function(j){' +
-        'if(!j.modalBody||/unable to find/i.test(j.modalBody)){alert(\'No availability data found\');return;}' +
-        'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(j.modalBody)))));' +
-      '})' +
-      '.catch(function(){alert(\'No availability data found\');});' +
-  '})();';
+  // ── Bookmarklet / Shortcut link ──
+  const bookmarkletHint = document.getElementById('bookmarklet-hint');
+  const bookmarkletLink = document.getElementById('bookmarklet-link');
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  if (isIOS) {
+    // On iOS, link to the Shortcuts gallery page instead of a javascript: URI.
+    // Replace SHORTCUT_ID once the Shortcut is created and shared via iCloud.
+    bookmarkletLink.href = 'https://www.icloud.com/shortcuts/SHORTCUT_ID';
+    bookmarkletLink.textContent = 'Add MinLibMap Shortcut';
+    bookmarkletHint.firstChild.textContent = 'Tap ';
+    bookmarkletHint.lastChild.textContent = ' to add the one-tap shortcut for any catalog page.';
+  } else {
+    // Set href dynamically to avoid HTML-escaping the javascript: URI.
+    // Embed the current page's URL as the target so the bookmarklet works from
+    // any instance — local dev or production — without hardcoding a URL.
+    const bookmarkletTarget = location.href.split('#')[0];
+    bookmarkletLink.href = 'javascript:(function(){' +
+      'var m=location.href.match(/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i);' +
+      'if(!m){alert(\'Open a catalog item page first\');return;}' +
+      'var id=m[1],' +
+      'base=\'https://catalog.minlib.net\',' +
+      'target=\'' + bookmarkletTarget + '\';' +
+      'fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=Book\')' +
+        '.then(function(r){return r.json();})' +
+        '.then(function(j){' +
+          'if(!j.modalBody||/unable to find/i.test(j.modalBody)){alert(\'No availability data found\');return;}' +
+          'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(j.modalBody)))));' +
+        '})' +
+        '.catch(function(){alert(\'No availability data found\');});' +
+    '})();';
+  }
 
   const bottomBar = document.getElementById('bottom-bar');
   const inputOverlay = document.getElementById('input-overlay');
