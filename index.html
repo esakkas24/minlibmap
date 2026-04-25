@@ -561,7 +561,10 @@ function showResults(parsed) {
 
     if (r.library) {
       row.addEventListener('click', () => {
-        map.flyTo([r.library.lat, r.library.lng], 15, { duration: 0.8 });
+        const targetPx = map.project([r.library.lat, r.library.lng], 15);
+        const offsetPx = map.getSize().y * 0.25;
+        const adjustedLatLng = map.unproject(targetPx.add([0, offsetPx]), 15);
+        map.flyTo(adjustedLatLng, 15, { duration: 0.8 });
         const marker = allMarkers[r.library.id];
         if (marker) setTimeout(() => marker.openPopup(), 850);
       });
