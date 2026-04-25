@@ -142,6 +142,7 @@
   .popup-avail { color: #1a7c3e; font-weight: 600; }
   .popup-avail.out { color: #b22; }
   .popup-call { color: #666; font-size: 13px; }
+  .popup-call.on-shelf { color: #1a7c3e; }
   .leaflet-popup-content .popup-directions {
     display: inline-block; margin-top: 8px; padding: 6px 14px;
     background: #1a7c3e; color: #fff; border-radius: 6px;
@@ -503,9 +504,10 @@ function showResults(parsed) {
     if (base) base.setStyle({ fillColor: color, color: isOnShelf ? '#0f5c2a' : '#993333', radius, fillOpacity });
 
     // Add popup
-    const copyLines = r.copies.map(c => {
+    const sortedCopies = [...r.copies].sort((a, b) => (b.available > 0) - (a.available > 0));
+    const copyLines = sortedCopies.map(c => {
       const label = [c.format, c.section, c.callNumber].filter(Boolean).join(' — ');
-      return label ? `<div class="popup-call">${label}</div>` : '';
+      return label ? `<div class="popup-call${c.available > 0 ? ' on-shelf' : ''}">${label}</div>` : '';
     }).join('');
     const popupHtml = `
       <div class="popup-name">${r.library.name}</div>
