@@ -101,6 +101,11 @@
     display: flex; align-items: center; gap: 4px;
     font-size: 13px; color: #333; cursor: pointer; white-space: nowrap;
   }
+  .filter-ctrl {
+    font-size: 12px; color: #1a7c3e; background: none; border: none;
+    padding: 0; cursor: pointer; text-decoration: underline; white-space: nowrap;
+  }
+  .filter-ctrl:hover { color: #14612f; }
   #results-status {
     padding: 0 16px 8px; font-size: 13px; color: #666; flex-shrink: 0;
   }
@@ -471,11 +476,13 @@ function showResults(parsed) {
   allParsed = deduped;
 
   const formatFilter = document.getElementById('format-filter');
-  const formats = [...new Set(deduped.map(r => r.format).filter(Boolean))];
+  const formatCounts = deduped.reduce((acc, r) => { if (r.format) acc[r.format] = (acc[r.format] || 0) + 1; return acc; }, {}); 
+  const formats = Object.keys(formatCounts);
   if (formats.length > 1) {
-    formatFilter.innerHTML = formats.map(f =>
-      `<label><input type="checkbox" value="${f}" checked> ${f}</label>`
-    ).join('');
+    formatFilter.innerHTML =
+      '<button class="filter-ctrl" id="check-all-btn">Check all</button>' +
+      '<button class="filter-ctrl" id="clear-all-btn">Clear all</button>' +
+      formats.map(f => `<label><input type="checkbox" value="${f}" checked> ${f}</label>`).join('');
     formatFilter.style.display = 'flex';
   } else {
     formatFilter.style.display = 'none';
@@ -737,6 +744,16 @@ async function init() {
   document.getElementById('format-filter').addEventListener('change', () => {
     const checked = [...document.querySelectorAll('#format-filter input:checked')].map(cb => cb.value);
     renderResults(allParsed.filter(r => !r.format || checked.includes(r.format)));
+  });
+
+  document.getElementById('format-filter').addEventListener('click', e => {
+    if (e.target.id === 'check-all-btn') {
+      document.querySelectorAll('#format-filter input').forEach(cb => cb.checked = true);
+      renderResults(allParsed);
+    } else if (e.target.id === 'clear-all-btn') {
+      document.querySelectorAll('#format-filter input').forEach(cb => cb.checked = false);
+      renderResults([]);
+    }
   });
 
   const inputHint = document.getElementById('input-hint');
