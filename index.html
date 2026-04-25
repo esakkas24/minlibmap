@@ -677,22 +677,15 @@ async function init() {
     'var m=location.href.match(/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i);' +
     'if(!m){alert(\'Open a catalog item page first\');return;}' +
     'var id=m[1],' +
-    'fmts=[\'Book\',\'Large Print Book\',\'Large Print\',\'Braille\',\'Audiobook\',\'Spoken CD\',\'DVD\',\'Blu-ray\',\'DVD or VCD\',\'eBook\',\'Music CD\',\'Book Club Kit\',\'Playaway Audiobook\',\'Console Game\',\'3-D Object\'],' +
     'base=\'https://catalog.minlib.net\',' +
     'target=\'' + bookmarkletTarget + '\';' +
-    'Promise.all(fmts.map(function(fmt){' +
-      'return fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=\'+encodeURIComponent(fmt))' +
-        '.then(function(r){return r.json();})' +
-        '.then(function(j){' +
-          'if(!j.modalBody||/unable to find/i.test(j.modalBody))return null;' +
-          'return {format:fmt,html:j.modalBody};' +
-        '})' +
-        '.catch(function(){return null;});' +
-    '})).then(function(all){' +
-      'var found=all.filter(Boolean);' +
-      'if(!found.length){alert(\'No availability data found\');return;}' +
-      'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(found))))));' +
-    '});' +
+    'fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=Book\')' +
+      '.then(function(r){return r.json();})' +
+      '.then(function(j){' +
+        'if(!j.modalBody||/unable to find/i.test(j.modalBody)){alert(\'No availability data found\');return;}' +
+        'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(j.modalBody)))));' +
+      '})' +
+      '.catch(function(){alert(\'No availability data found\');});' +
   '})();';
 
   const bottomBar = document.getElementById('bottom-bar');
