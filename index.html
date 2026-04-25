@@ -461,10 +461,17 @@ function groupByLibrary(rows) {
 
 // ── Display Results ──
 function showResults(parsed) {
-  allParsed = parsed;
+  const seen = new Set();
+  const deduped = parsed.filter(r => {
+    const key = `${r.libraryName}|${r.section}|${r.callNumber}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  allParsed = deduped;
 
   const formatFilter = document.getElementById('format-filter');
-  const formats = [...new Set(parsed.map(r => r.format).filter(Boolean))];
+  const formats = [...new Set(deduped.map(r => r.format).filter(Boolean))];
   if (formats.length > 1) {
     formatFilter.innerHTML = formats.map(f =>
       `<label><input type="checkbox" value="${f}" checked> ${f}</label>`
@@ -474,7 +481,7 @@ function showResults(parsed) {
     formatFilter.style.display = 'none';
   }
 
-  renderResults(parsed);
+  renderResults(deduped);
 
   document.getElementById('bottom-bar').style.display = 'none';
   document.getElementById('results-panel').classList.add('visible');
@@ -703,7 +710,7 @@ async function init() {
     'var m=location.href.match(/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i);' +
     'if(!m){alert(\'Open a catalog item page first\');return;}' +
     'var id=m[1],' +
-    'fmts=[\'Book\',\'Large Print Book\',\'Large Print\',\'Braille\',\'Audiobook\',\'Spoken CD\',\'DVD\',\'Blu-ray\',\'DVD or VCD\',\'eBook\',\'Music CD\',\'Book Club Kit\',\'Playaway Audiobook\',\'Console Game\',\'3-D Object\'],' +
+    'fmts=[\'Book\',\'Large Print\',\'Spoken CD\',\'Playaway Audiobook\',\'Braille\',\'Blu-ray\',\'DVD or VCD\',\'Music CD\',\'Console Game\',\'3-D Object\'],' +
     'base=\'https://catalog.minlib.net\',' +
     'target=\'' + bookmarkletTarget + '\';' +
     'Promise.all(fmts.map(function(fmt){' +
