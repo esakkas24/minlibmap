@@ -501,7 +501,7 @@ function showResults(parsed) {
 
     // Add popup
     const copyLines = r.copies.map(c => {
-      const label = [c.section, c.callNumber].filter(Boolean).join(' — ');
+      const label = [c.format, c.section, c.callNumber].filter(Boolean).join(' — ');
       return label ? `<div class="popup-call">${label}</div>` : '';
     }).join('');
     const popupHtml = `
@@ -549,7 +549,7 @@ function showResults(parsed) {
     row.className = 'result-row' + (r.onShelf && i === 0 && userLatLng ? ' nearest' : '');
 
     const isNearest = r.onShelf && i === 0;
-    const detail = r.copies.map(c => c.callNumber || c.section || 'No call number').join(', ');
+    const detail = r.copies.map(c => [c.format, c.callNumber || c.section].filter(Boolean).join(' ') || 'No call number').join(', ');
     row.innerHTML = `
       <div class="result-rank ${r.onShelf ? 'on-shelf' : 'checked-out'}">${r.available}</div>
       <div class="result-info">
@@ -578,7 +578,7 @@ function showResults(parsed) {
 // Parse the HTML table that Aspen Discovery returns in its getCopyDetails JSON response.
 // Handles both display style 1 (Available Copies | Location | Call #)
 // and display style 2 (Volume | Location | Call # | Status | …).
-function parseCopyDetailsHtml(html) {
+function parseCopyDetailsHtml(html, format) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const table = doc.querySelector('.itemSummaryTable');
   if (!table) return [];
@@ -616,7 +616,7 @@ function parseCopyDetailsHtml(html) {
     const section     = di > 0 ? locationPart.substring(di + 3).trim() : '';
     const library     = matchLibrary(libraryName);
 
-    results.push({ available, total, libraryName, section, callNumber, onShelf: available > 0, library });
+    results.push({ available, total, libraryName, section, callNumber, format: format || null, onShelf: available > 0, library });
   });
   return results;
 }
@@ -639,8 +639,20 @@ async function init() {
   const hashMatch = window.location.hash.match(/^#data=(.+)/);
   if (hashMatch) {
     try {
-      const html = decodeURIComponent(escape(atob(decodeURIComponent(hashMatch[1]))));
-      const parsed = parseCopyDetailsHtml(html);
+      const decoded = decodeURIComponent(escape(atob(decodeURIComponent(hashMatch[1]))));
+      let parsed = [];
+      try {
+        const items = JSON.parse(decoded);
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            parsed.push(...parseCopyDetailsHtml(item.html, item.format));
+          }
+        } else {
+          parsed = parseCopyDetailsHtml(decoded);
+        }
+      } catch (e) {
+        parsed = parseCopyDetailsHtml(decoded);
+      }
       if (parsed.length > 0) {
         parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
         try {
@@ -668,16 +680,19 @@ async function init() {
     'fmts=[\'Book\',\'Large Print Book\',\'Large Print\',\'Braille\',\'Audiobook\',\'Spoken CD\',\'DVD\',\'Blu-ray\',\'DVD or VCD\',\'eBook\',\'Music CD\',\'Book Club Kit\',\'Playaway Audiobook\',\'Console Game\',\'3-D Object\'],' +
     'base=\'https://catalog.minlib.net\',' +
     'target=\'' + bookmarkletTarget + '\';' +
-    '(function t(i){' +
-      'if(i>=fmts.length){alert(\'No availability data found\');return;}' +
-      'fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=\'+encodeURIComponent(fmts[i]))' +
+    'Promise.all(fmts.map(function(fmt){' +
+      'return fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=\'+encodeURIComponent(fmt))' +
         '.then(function(r){return r.json();})' +
         '.then(function(j){' +
-          'if(!j.modalBody||/unable to find/i.test(j.modalBody)){t(i+1);return;}' +
-          'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(j.modalBody)))));' +
+          'if(!j.modalBody||/unable to find/i.test(j.modalBody))return null;' +
+          'return {format:fmt,html:j.modalBody};' +
         '})' +
-        '.catch(function(){t(i+1);});' +
-    '})(0);' +
+        '.catch(function(){return null;});' +
+    '})).then(function(all){' +
+      'var found=all.filter(Boolean);' +
+      'if(!found.length){alert(\'No availability data found\');return;}' +
+      'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(found))))));' +
+    '});' +
   '})();';
 
   const bottomBar = document.getElementById('bottom-bar');
