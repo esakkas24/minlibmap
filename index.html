@@ -776,7 +776,7 @@ async function init() {
     const installClose = document.getElementById('install-close');
 
     bookmarkletLink.addEventListener('dragstart', () => {
-      installOverlay.classList.add('visible');
+      setTimeout(() => installOverlay.classList.add('visible'), 2000);
     });
 
     installClose.addEventListener('click', () => {
