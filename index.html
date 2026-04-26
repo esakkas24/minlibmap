@@ -185,6 +185,44 @@
     #bookmarklet-link { cursor: pointer; }
   }
 
+  /* Bookmarklet install instructions modal */
+  #install-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 3000;
+    background: rgba(0,0,0,0.5); display: none; align-items: center;
+    justify-content: center; padding: 16px;
+  }
+  #install-overlay.visible { display: flex; }
+  #install-modal {
+    background: #fff; border-radius: 16px; padding: 24px 20px 20px;
+    max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto;
+    position: relative;
+  }
+  #install-modal h2 { font-size: 18px; margin-bottom: 16px; color: #1a1a1a; }
+  #install-close {
+    position: absolute; top: 14px; right: 16px;
+    background: none; border: none; font-size: 22px; line-height: 1;
+    cursor: pointer; color: #666; padding: 0 4px;
+  }
+  #install-close:hover { color: #1a1a1a; }
+  .install-step {
+    display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;
+  }
+  .install-step:last-child { margin-bottom: 0; }
+  .install-step-label {
+    font-size: 14px; color: #1a1a1a; line-height: 1.4;
+  }
+  .install-step-num {
+    display: inline-block; width: 22px; height: 22px; border-radius: 50%;
+    background: #1a7c3e; color: #fff; font-size: 12px; font-weight: 700;
+    text-align: center; line-height: 22px; margin-right: 6px; flex-shrink: 0;
+  }
+  .install-screenshot {
+    width: 100%; aspect-ratio: 16/9; background: #f0f0f0;
+    border: 1px solid #d0d0d0; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #888; font-size: 13px; text-align: center; padding: 12px;
+  }
+
   /* Handle for bottom sheet drag hint */
   .drag-hint {
     width: 36px; height: 4px; background: #d0d0d0; border-radius: 2px;
@@ -205,7 +243,7 @@
     <div class="drag-hint"></div>
     <h2>Find Your Book</h2>
     <div id="bookmarklet-hint">
-      Drag <a id="bookmarklet-link" href="#">MinLibMap Bookmarklet</a> to your bookmarks bar for one-click fetching from any catalog item page.
+      Drag <a id="bookmarklet-link" href="#">MinLibMap</a> to your bookmarks bar for one-click fetching from any catalog item page.
     </div>
     <p class="or-divider"><strong>OR</strong></p>
     <p>Paste the <strong>"Where Is It?"</strong> table from the catalog popup.</p>
@@ -216,6 +254,29 @@
       <button id="cancel-btn">Cancel</button>
       <button id="find-btn">Search</button>
     </div>
+  </div>
+</div>
+
+<div id="install-overlay">
+  <div id="install-modal">
+    <button id="install-close" aria-label="Close">&times;</button>
+    <h2>How to use MinLibMap</h2>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">1</span>Drag the bookmarklet to your bookmarks bar.
+      </div>
+      <img class="install-screenshot" src="screenshots/instructions1.drag.png" alt="Bookmarklet being dragged to bookmarks bar">                                                </div>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">2</span>On a catalog page for your book, click the MinLibMap bookmarklet.
+      </div>
+      <img class="install-screenshot" src="screenshots/instructions2.catalog.png" alt="Catalog item page with bookmarklet highlighted in bookmarks bar">
+    </div>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">3</span>A map opens showing locations that have the book on-shelf, ordered by distance from you.
+      </div>
+      <img class="install-screenshot" src="screenshots/instructions3.page.png" alt="MinLibMap results view with pins on map">
   </div>
 </div>
 
@@ -708,6 +769,20 @@ async function init() {
         '})' +
         '.catch(function(){alert(\'No availability data found\');});' +
     '})();';
+
+    const installOverlay = document.getElementById('install-overlay');
+    const installClose = document.getElementById('install-close');
+
+    bookmarkletLink.addEventListener('dragstart', () => {
+      setTimeout(() => installOverlay.classList.add('visible'), 2000);
+    });
+
+    installClose.addEventListener('click', () => {
+      installOverlay.classList.remove('visible');
+    });
+    installOverlay.addEventListener('click', (e) => {
+      if (e.target === installOverlay) installOverlay.classList.remove('visible');
+    });
   }
 
   const bottomBar = document.getElementById('bottom-bar');
