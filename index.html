@@ -189,18 +189,22 @@
   }
 
   /* Bookmarklet install instructions modal */
+  #install-overlay-ios,
   #install-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 3000;
     background: rgba(0,0,0,0.5); display: none; align-items: center;
     justify-content: center; padding: 16px;
   }
+  #install-overlay-ios.visible,
   #install-overlay.visible { display: flex; }
+  #install-modal-ios,
   #install-modal {
     background: #fff; border-radius: 16px; padding: 24px 20px 20px;
     max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto;
     position: relative;
   }
   #install-modal h2 { font-size: 18px; margin-bottom: 16px; color: #1a1a1a; }
+  #install-close-ios,
   #install-close {
     position: absolute; top: 14px; right: 16px;
     background: none; border: none; font-size: 22px; line-height: 1;
@@ -256,6 +260,37 @@
     <div id="input-actions">
       <button id="cancel-btn">Cancel</button>
       <button id="find-btn">Search</button>
+    </div>
+  </div>
+</div>
+
+<div id="install-overlay-ios">
+  <div id="install-modal-ios">
+    <button id="install-close-ios" aria-label="Close">&times;</button>
+    <h2>How to use MinLibMap</h2>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">1</span>Tap "Add MinLibMap Shortcut" to add the shortcut to your device.
+      </div>
+      <div class="install-screenshot">Screenshot placeholder — save as screenshots/ios/instructions1.add.png</div>
+    </div>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">2</span>Navigate to a catalog item page for your book and tap the shortcut.
+      </div>
+      <div class="install-screenshot">Screenshot placeholder — save as screenshots/ios/instructions2.catalog.png</div>
+    </div>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">3</span>If prompted for location access, tap "Always Allow".
+      </div>
+      <div class="install-screenshot">Screenshot placeholder — save as screenshots/ios/instructions3.allow.png</div>
+    </div>
+    <div class="install-step">
+      <div class="install-step-label">
+        <span class="install-step-num">4</span>MinLibMap opens showing locations with the book on-shelf, ordered by distance from you.
+      </div>
+      <div class="install-screenshot">Screenshot placeholder — save as screenshots/ios/instructions4.map.png</div>
     </div>
   </div>
 </div>
@@ -751,7 +786,23 @@ async function init() {
     bookmarkletLink.href = 'https://www.icloud.com/shortcuts/5063221b93374f19918fa1aa986d2f38';
     bookmarkletLink.textContent = 'Add MinLibMap Shortcut';
     bookmarkletHint.firstChild.textContent = 'Tap ';
-    bookmarkletHint.lastChild.textContent = ' to add the one-tap shortcut for any catalog page.';
+    // Use nextSibling (the text node after the link) rather than lastChild,
+    // which is now the #install-instructions-link anchor.
+    bookmarkletLink.nextSibling.textContent = ' to add the one-tap shortcut for any catalog page. ';
+
+    const installOverlayIos = document.getElementById('install-overlay-ios');
+    const installCloseIos = document.getElementById('install-close-ios');
+
+    document.getElementById('install-instructions-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      installOverlayIos.classList.add('visible');
+    });
+    installCloseIos.addEventListener('click', () => {
+      installOverlayIos.classList.remove('visible');
+    });
+    installOverlayIos.addEventListener('click', (e) => {
+      if (e.target === installOverlayIos) installOverlayIos.classList.remove('visible');
+    });
   } else {
     // Set href dynamically to avoid HTML-escaping the javascript: URI.
     // Embed the current page's URL as the target so the bookmarklet works from
