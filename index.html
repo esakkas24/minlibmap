@@ -184,6 +184,9 @@
   @media (hover: none) {
     #bookmarklet-link { cursor: pointer; }
   }
+  #install-instructions-link {
+    color: #1a7c3e; font-size: 13px; white-space: nowrap;
+  }
 
   /* Bookmarklet install instructions modal */
   #install-overlay {
@@ -243,7 +246,7 @@
     <div class="drag-hint"></div>
     <h2>Find Your Book</h2>
     <div id="bookmarklet-hint">
-      Drag <a id="bookmarklet-link" href="#">MinLibMap</a> to your bookmarks bar for one-click fetching from any catalog item page.
+      Drag <a id="bookmarklet-link" href="#">MinLibMap</a> to your bookmarks bar for one-click fetching from any catalog item page. <a id="install-instructions-link" href="#">(Instructions)</a>
     </div>
     <p class="or-divider"><strong>OR</strong></p>
     <p>Paste the <strong>"Where Is It?"</strong> table from the catalog popup.</p>
@@ -776,6 +779,11 @@ async function init() {
 
     bookmarkletLink.addEventListener('dragstart', () => {
       setTimeout(() => installOverlay.classList.add('visible'), 2000);
+    });
+
+    document.getElementById('install-instructions-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      installOverlay.classList.add('visible');
     });
 
     installClose.addEventListener('click', () => {
