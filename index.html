@@ -235,6 +235,12 @@
     width: 36px; height: 4px; background: #d0d0d0; border-radius: 2px;
     margin: 0 auto 12px;
   }
+
+  /* Results panel drag-to-minimize */
+  #results-panel.visible { cursor: default; }
+  #results-panel .drag-hint,
+  #results-header { touch-action: none; cursor: ns-resize; }
+  #results-header button { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -678,9 +684,13 @@ function showResults(parsed) {
     resultsList.appendChild(row);
   });
 
-  // Show results panel, hide bottom bar
+  // Show results panel, hide bottom bar — always start expanded
+  const rp = document.getElementById('results-panel');
+  delete rp.dataset.minimized;
+  rp.style.transition = 'none';
+  rp.style.transform  = '';
   document.getElementById('bottom-bar').style.display = 'none';
-  document.getElementById('results-panel').classList.add('visible');
+  rp.classList.add('visible');
 }
 
 // Parse the HTML table that Aspen Discovery returns in its getCopyDetails JSON response.
@@ -851,6 +861,67 @@ async function init() {
   const findBtn = document.getElementById('find-btn');
   const resultsPanel = document.getElementById('results-panel');
 
+  // ── Results panel drag to minimize ──────────────────────────────────────
+  const PANEL_EXPOSED_PX = 60; // px of panel visible when minimized
+  const PANEL_SNAP_PX    = 60; // drag distance required to snap
+
+  let panelDragActive = false;
+  let panelDragStartY = 0;
+  let panelDragStartOffset = 0;
+
+  function isPanelMinimized() { return !!resultsPanel.dataset.minimized; }
+
+  function setPanelOffset(y, animate) {
+    resultsPanel.style.transition = animate ? 'transform 0.3s ease' : 'none';
+    resultsPanel.style.transform  = y === 0 ? '' : `translateY(${y}px)`;
+  }
+
+  function expandPanel() {
+    delete resultsPanel.dataset.minimized;
+    setPanelOffset(0, true);
+  }
+
+  function minimizePanel() {
+    resultsPanel.dataset.minimized = '1';
+    setPanelOffset(resultsPanel.offsetHeight - PANEL_EXPOSED_PX, true);
+  }
+
+  function onPanelDragStart(e) {
+    if (e.button !== undefined && e.button !== 0) return; // left-click / touch only
+    panelDragActive    = true;
+    panelDragStartY    = e.clientY;
+    panelDragStartOffset = isPanelMinimized() ? resultsPanel.offsetHeight - PANEL_EXPOSED_PX : 0;
+    setPanelOffset(panelDragStartOffset, false);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function onPanelDragMove(e) {
+    if (!panelDragActive) return;
+    const dy   = e.clientY - panelDragStartY;
+    const maxY = resultsPanel.offsetHeight - PANEL_EXPOSED_PX;
+    resultsPanel.style.transform = `translateY(${Math.max(0, Math.min(panelDragStartOffset + dy, maxY))}px)`;
+  }
+
+  function onPanelDragEnd(e) {
+    if (!panelDragActive) return;
+    panelDragActive = false;
+    const dy = e.clientY - panelDragStartY;
+    if (!isPanelMinimized()) {
+      if (dy > PANEL_SNAP_PX) { minimizePanel(); } else { expandPanel(); }
+    } else {
+      // Tap (tiny movement) or upward drag expands
+      if (Math.abs(dy) < 10 || dy < -PANEL_SNAP_PX) { expandPanel(); } else { minimizePanel(); }
+    }
+  }
+
+  [resultsPanel.querySelector('.drag-hint'), document.getElementById('results-header')].forEach(el => {
+    el.addEventListener('pointerdown', onPanelDragStart);
+    el.addEventListener('pointermove', onPanelDragMove);
+    el.addEventListener('pointerup',   onPanelDragEnd);
+    el.addEventListener('pointercancel', () => { panelDragActive = false; });
+  });
+  // ────────────────────────────────────────────────────────────────────────
+
   const inputHint = document.getElementById('input-hint');
 
   // Real-time input type detection badge
@@ -925,6 +996,7 @@ async function init() {
 
   // Clear / Start Over
   document.getElementById('clear-btn').addEventListener('click', () => {
+    expandPanel();
     resultsPanel.classList.remove('visible');
     bottomBar.style.display = 'flex';
     pasteArea.value = '';
