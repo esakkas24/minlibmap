@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
+  :root { --sab: env(safe-area-inset-bottom, 0px); --sat: env(safe-area-inset-top, 0px); }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
   #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
@@ -17,10 +18,11 @@
   /* Bottom bar - State A */
   #bottom-bar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
-    padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    background: #fff; border-top: 1px solid #e0e0e0;
+    padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: #fff; border-radius: 16px 16px 0 0;
     box-shadow: 0 -2px 12px rgba(0,0,0,0.1);
-    display: flex; gap: 10px; align-items: center;
+    display: flex; flex-direction: column; align-items: stretch;
+    overflow: hidden; transition: height 0.3s ease;
   }
   #paste-btn {
     flex: 1; padding: 14px 20px; border: none; border-radius: 10px;
@@ -80,7 +82,8 @@
     background: #fff; border-radius: 16px 16px 0 0;
     box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
     display: none; flex-direction: column;
-    max-height: 55vh; overflow: hidden;
+    height: 55vh; overflow: hidden;
+    transition: height 0.3s ease;
   }
   #results-panel.visible { display: flex; }
   #results-header {
@@ -235,6 +238,14 @@
     width: 36px; height: 4px; background: #d0d0d0; border-radius: 2px;
     margin: 0 auto 12px;
   }
+  .drag-zone {
+    align-self: stretch; height: 44px;
+    display: flex; justify-content: center; align-items: center;
+    flex-shrink: 0; cursor: grab;
+  }
+  .drag-zone:active { cursor: grabbing; }
+  .drag-zone .drag-hint { margin: 0; }
+  #bottom-bar .drag-zone { margin: 0 -16px; }
 </style>
 </head>
 <body>
@@ -242,6 +253,7 @@
 <div id="map"></div>
 
 <div id="bottom-bar">
+  <div class="drag-zone"><div class="drag-hint"></div></div>
   <button id="paste-btn">Find My Book</button>
 </div>
 
@@ -320,7 +332,7 @@
 </div>
 
 <div id="results-panel">
-  <div class="drag-hint"></div>
+  <div class="drag-zone"><div class="drag-hint"></div></div>
   <div id="results-header">
     <h2 id="results-title">Results</h2>
     <button id="clear-btn">Clear</button>
@@ -418,6 +430,7 @@ const EXAMPLE_DATA = `Available Copies\tLocation\tCall #
 
 // ── Globals ──
 let map, userLatLng = null, allMarkers = {}, resultMarkers = [], userMarker = null;
+let bottomBarDrag, resultsPanelDrag;
 
 // ── Init Map ──
 function initMap() {
@@ -679,6 +692,8 @@ function showResults(parsed) {
   });
 
   // Show results panel, hide bottom bar
+  bottomBarDrag.reset();
+  resultsPanelDrag.reset();
   document.getElementById('bottom-bar').style.display = 'none';
   document.getElementById('results-panel').classList.add('visible');
 }
@@ -851,6 +866,90 @@ async function init() {
   const findBtn = document.getElementById('find-btn');
   const resultsPanel = document.getElementById('results-panel');
 
+  const sat = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
+
+  function makeDraggable(panel, getTallH) {
+    const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
+    const peekHeight = 32 + sab;
+    let startY = 0, startH = 0, isDragging = false, dragDelta = 0, currentH = 0;
+
+    function getSnaps() {
+      const tallH = getTallH();
+      const midH = Math.round(window.innerHeight * 0.55);
+      const raw = [tallH, Math.min(midH, tallH - 5), peekHeight];
+      return raw.filter((v, i, arr) => arr.findIndex(u => Math.abs(u - v) < 5) === i);
+    }
+
+    function snapTo(h, animate = true) {
+      currentH = h;
+      panel.style.transition = animate ? 'height 0.3s ease' : 'none';
+      panel.style.height = `${h}px`;
+    }
+
+    function reset() {
+      currentH = getTallH();
+      panel.style.transition = 'none';
+      panel.style.height = `${currentH}px`;
+    }
+
+    function onStart(clientY) {
+      isDragging = true;
+      dragDelta = 0;
+      startY = clientY;
+      startH = panel.offsetHeight;
+      currentH = startH;
+      panel.style.transition = 'none';
+    }
+
+    function onMove(clientY) {
+      if (!isDragging) return;
+      dragDelta = clientY - startY;
+      const newH = Math.max(peekHeight, Math.min(getTallH(), startH - dragDelta));
+      currentH = newH;
+      panel.style.height = `${newH}px`;
+    }
+
+    function onEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+      const snaps = getSnaps();
+      const minSnap = snaps[snaps.length - 1];
+      if (Math.abs(dragDelta) < 5) {
+        if (Math.abs(startH - minSnap) < 5) snapTo(snaps[Math.max(0, snaps.length - 2)]);
+        return;
+      }
+      const nearest = snaps.reduce((best, s) => Math.abs(s - currentH) < Math.abs(best - currentH) ? s : best);
+      snapTo(nearest);
+    }
+
+    panel.addEventListener('touchstart', e => {
+      if (!e.target.closest('.drag-zone')) return;
+      onStart(e.touches[0].clientY);
+    }, { passive: true });
+
+    panel.addEventListener('touchmove', e => {
+      if (!isDragging) return;
+      e.preventDefault();
+      onMove(e.touches[0].clientY);
+    }, { passive: false });
+
+    panel.addEventListener('touchend', () => onEnd());
+
+    panel.querySelector('.drag-zone').addEventListener('mousedown', e => {
+      onStart(e.clientY);
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => { if (isDragging) onMove(e.clientY); });
+    document.addEventListener('mouseup', () => { if (isDragging) onEnd(); });
+
+    return { reset };
+  }
+
+  const bottomBarTallH = bottomBar.scrollHeight;
+  bottomBarDrag = makeDraggable(bottomBar, () => bottomBarTallH);
+  resultsPanelDrag = makeDraggable(resultsPanel, () => window.innerHeight - sat);
+
   const inputHint = document.getElementById('input-hint');
 
   // Real-time input type detection badge
@@ -925,8 +1024,10 @@ async function init() {
 
   // Clear / Start Over
   document.getElementById('clear-btn').addEventListener('click', () => {
+    resultsPanelDrag.reset();
     resultsPanel.classList.remove('visible');
     bottomBar.style.display = 'flex';
+    bottomBarDrag.reset();
     pasteArea.value = '';
 
     // Reset markers
