@@ -278,13 +278,13 @@
     <h2>How to use MinLibMap</h2>
     <div class="install-step">
       <div class="install-step-label">
-        <span class="install-step-num">1</span>Tap "Add MinLibMap Shortcut" to add the shortcut to your device.
+        <span class="install-step-num">1</span>Tap "Add MinLibMap Shortcut" then "Add Shortcut" to add the shortcut to your device.
       </div>
       <div class="install-screenshot">Screenshot placeholder — save as screenshots/ios/instructions1.add.png</div>
     </div>
     <div class="install-step">
       <div class="install-step-label">
-        <span class="install-step-num">2</span>Navigate to a catalog item page for your book and tap the shortcut.
+        <span class="install-step-num">2</span>On a catalog item page for your book, tap the "Share" button, then "MinLibMap" in the share sheet.
       </div>
       <div class="install-screenshot">Screenshot placeholder — save as screenshots/ios/instructions2.catalog.png</div>
     </div>
@@ -751,6 +751,94 @@ function showToast(msg, duration = 3000) {
 async function init() {
   initMap();
 
+  const bottomBar = document.getElementById('bottom-bar');
+  const inputOverlay = document.getElementById('input-overlay');
+  const pasteArea = document.getElementById('paste-area');
+  const findBtn = document.getElementById('find-btn');
+  const resultsPanel = document.getElementById('results-panel');
+
+  const sat = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
+
+  function makeDraggable(panel, getTallH) {
+    const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
+    const peekHeight = 32 + sab;
+    let startY = 0, startH = 0, isDragging = false, dragDelta = 0, currentH = 0;
+
+    function getSnaps() {
+      const tallH = getTallH();
+      const midH = Math.round(window.innerHeight * 0.55);
+      const raw = [tallH, Math.min(midH, tallH - 5), peekHeight];
+      return raw.filter((v, i, arr) => arr.findIndex(u => Math.abs(u - v) < 5) === i);
+    }
+
+    function snapTo(h, animate = true) {
+      currentH = h;
+      panel.style.transition = animate ? 'height 0.3s ease' : 'none';
+      panel.style.height = `${h}px`;
+    }
+
+    function reset() {
+      currentH = Math.min(Math.round(window.innerHeight * 0.55), getTallH());
+      panel.style.transition = 'none';
+      panel.style.height = `${currentH}px`;
+    }
+
+    function onStart(clientY) {
+      isDragging = true;
+      dragDelta = 0;
+      startY = clientY;
+      startH = panel.offsetHeight;
+      currentH = startH;
+      panel.style.transition = 'none';
+    }
+
+    function onMove(clientY) {
+      if (!isDragging) return;
+      dragDelta = clientY - startY;
+      const newH = Math.max(peekHeight, Math.min(getTallH(), startH - dragDelta));
+      currentH = newH;
+      panel.style.height = `${newH}px`;
+    }
+
+    function onEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+      const snaps = getSnaps();
+      const minSnap = snaps[snaps.length - 1];
+      if (Math.abs(dragDelta) < 5) {
+        if (Math.abs(startH - minSnap) < 5) snapTo(snaps[Math.max(0, snaps.length - 2)]);
+        return;
+      }
+      const nearest = snaps.reduce((best, s) => Math.abs(s - currentH) < Math.abs(best - currentH) ? s : best);
+      snapTo(nearest);
+    }
+
+    panel.addEventListener('touchstart', e => {
+      if (!e.target.closest('.drag-zone')) return;
+      onStart(e.touches[0].clientY);
+    }, { passive: true });
+
+    panel.addEventListener('touchmove', e => {
+      if (!isDragging) return;
+      e.preventDefault();
+      onMove(e.touches[0].clientY);
+    }, { passive: false });
+
+    panel.addEventListener('touchend', () => onEnd());
+
+    panel.querySelector('.drag-zone').addEventListener('mousedown', e => {
+      onStart(e.clientY);
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => { if (isDragging) onMove(e.clientY); });
+    document.addEventListener('mouseup', () => { if (isDragging) onEnd(); });
+
+    return { reset };
+  }
+
+  resultsPanelDrag = makeDraggable(resultsPanel, () => window.innerHeight - sat);
+
   // ── Bookmarklet hash reader ──
   // When the bookmarklet opens MinLibMap with #data=<base64>, decode and render
   // immediately without any user interaction.
@@ -854,94 +942,6 @@ async function init() {
       if (e.target === installOverlay) installOverlay.classList.remove('visible');
     });
   }
-
-  const bottomBar = document.getElementById('bottom-bar');
-  const inputOverlay = document.getElementById('input-overlay');
-  const pasteArea = document.getElementById('paste-area');
-  const findBtn = document.getElementById('find-btn');
-  const resultsPanel = document.getElementById('results-panel');
-
-  const sat = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
-
-  function makeDraggable(panel, getTallH) {
-    const sab = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
-    const peekHeight = 32 + sab;
-    let startY = 0, startH = 0, isDragging = false, dragDelta = 0, currentH = 0;
-
-    function getSnaps() {
-      const tallH = getTallH();
-      const midH = Math.round(window.innerHeight * 0.55);
-      const raw = [tallH, Math.min(midH, tallH - 5), peekHeight];
-      return raw.filter((v, i, arr) => arr.findIndex(u => Math.abs(u - v) < 5) === i);
-    }
-
-    function snapTo(h, animate = true) {
-      currentH = h;
-      panel.style.transition = animate ? 'height 0.3s ease' : 'none';
-      panel.style.height = `${h}px`;
-    }
-
-    function reset() {
-      currentH = Math.min(Math.round(window.innerHeight * 0.55), getTallH());
-      panel.style.transition = 'none';
-      panel.style.height = `${currentH}px`;
-    }
-
-    function onStart(clientY) {
-      isDragging = true;
-      dragDelta = 0;
-      startY = clientY;
-      startH = panel.offsetHeight;
-      currentH = startH;
-      panel.style.transition = 'none';
-    }
-
-    function onMove(clientY) {
-      if (!isDragging) return;
-      dragDelta = clientY - startY;
-      const newH = Math.max(peekHeight, Math.min(getTallH(), startH - dragDelta));
-      currentH = newH;
-      panel.style.height = `${newH}px`;
-    }
-
-    function onEnd() {
-      if (!isDragging) return;
-      isDragging = false;
-      const snaps = getSnaps();
-      const minSnap = snaps[snaps.length - 1];
-      if (Math.abs(dragDelta) < 5) {
-        if (Math.abs(startH - minSnap) < 5) snapTo(snaps[Math.max(0, snaps.length - 2)]);
-        return;
-      }
-      const nearest = snaps.reduce((best, s) => Math.abs(s - currentH) < Math.abs(best - currentH) ? s : best);
-      snapTo(nearest);
-    }
-
-    panel.addEventListener('touchstart', e => {
-      if (!e.target.closest('.drag-zone')) return;
-      onStart(e.touches[0].clientY);
-    }, { passive: true });
-
-    panel.addEventListener('touchmove', e => {
-      if (!isDragging) return;
-      e.preventDefault();
-      onMove(e.touches[0].clientY);
-    }, { passive: false });
-
-    panel.addEventListener('touchend', () => onEnd());
-
-    panel.querySelector('.drag-zone').addEventListener('mousedown', e => {
-      onStart(e.clientY);
-      e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', e => { if (isDragging) onMove(e.clientY); });
-    document.addEventListener('mouseup', () => { if (isDragging) onEnd(); });
-
-    return { reset };
-  }
-
-  resultsPanelDrag = makeDraggable(resultsPanel, () => window.innerHeight - sat);
 
   const inputHint = document.getElementById('input-hint');
 
