@@ -24,6 +24,7 @@ The Minuteman catalog's "Where Is It?" feature shows which branches hold a book 
 - **Paste parser** that reads the catalog's "Where Is It?" table format
 - **GPS proximity sorting** — nearest on-shelf branch shown first
 - **One-tap directions** to any branch via Google Maps
+- **Shareable results link** — "Copy Link" puts the current results in a URL that opens straight to the same map
 - **No login, no API key, no tracking** — single static HTML file
 
 ## Usage
