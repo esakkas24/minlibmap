@@ -2,10 +2,20 @@ name: Deploy PR to minlibmap_dev
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - index.html
+      - screenshots/**
+      - .github/workflows/deploy-dev.yml
 
 permissions:
   contents: read
+  pull-requests: write
+
+# Every PR pushes to the same dev repo, so deploys must not race each other.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -14,16 +24,65 @@ jobs:
       - name: Checkout PR branch
         uses: actions/checkout@v4
 
-      - name: Push index.html to minlibmap_dev
+      - name: Publish or remove this PR's preview
         env:
           TOKEN: ${{ secrets.DEV_DEPLOY_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.head_ref }}
+          CLOSED: ${{ github.event.action == 'closed' }}
         run: |
-          git clone https://x-access-token:${TOKEN}@github.com/esakkas24/minlibmap_dev.git /tmp/dev
-          cp index.html /tmp/dev/
-          cp -r screenshots /tmp/dev/
+          set -euo pipefail
+          git clone "https://x-access-token:${TOKEN}@github.com/esakkas24/minlibmap_dev.git" /tmp/dev
           cd /tmp/dev
+
+          # Each PR owns one directory. Rebuild it from scratch so deleted files
+          # do not linger from an earlier push.
+          rm -rf "pr-${PR}"
+          if [ "${CLOSED}" != "true" ]; then
+            mkdir -p "pr-${PR}"
+            cp "${GITHUB_WORKSPACE}/index.html" "pr-${PR}/"
+            cp -r "${GITHUB_WORKSPACE}/screenshots" "pr-${PR}/"
+          fi
+
+          # The root is an index of whatever previews currently exist.
+          {
+            echo '<!doctype html><meta charset="utf-8">'
+            echo '<title>MinLibMap dev previews</title>'
+            echo '<style>body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:640px;margin:40px auto;padding:0 20px}'
+            echo 'a{display:block;margin:10px 0;padding:12px 16px;background:#1a7c3e;color:#fff;text-decoration:none;border-radius:8px;font-weight:600}'
+            echo 'p{color:#555}</style>'
+            echo '<h1>MinLibMap dev previews</h1>'
+            found=0
+            for d in pr-*/; do
+              [ -d "${d}" ] || continue
+              n="${d#pr-}"; n="${n%/}"
+              echo "<a href=\"${d}\">PR #${n}</a>"
+              found=1
+            done
+            if [ "${found}" = "0" ]; then
+              echo '<p>No pull requests are currently deployed.</p>'
+            fi
+            echo '<p>Each link serves that PR&rsquo;s index.html. A preview is removed when its PR closes.</p>'
+          } > index.html
+
+          # The old single-preview layout kept the app and its assets at the root.
+          rm -rf screenshots
+
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add index.html screenshots/
-          git diff --cached --quiet || git commit -m "Deploy PR #${{ github.event.pull_request.number }} (${{ github.head_ref }})"
+          git add -A
+          if [ "${CLOSED}" = "true" ]; then
+            MSG="Remove preview for PR #${PR} (${BRANCH})"
+          else
+            MSG="Deploy PR #${PR} (${BRANCH}) to pr-${PR}/"
+          fi
+          git diff --cached --quiet || git commit -m "${MSG}"
           git push
+
+      - name: Comment the preview URL
+        if: github.event.action == 'opened' || github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body "Preview: https://esakkas24.github.io/minlibmap_dev/pr-${{ github.event.pull_request.number }}/"
