@@ -90,11 +90,13 @@
     padding: 16px 16px 8px; flex-shrink: 0;
   }
   #results-header h2 { font-size: 16px; color: #1a1a1a; }
-  #clear-btn {
+  #results-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  #clear-btn, #share-btn {
     background: none; border: 1px solid #d0d0d0; border-radius: 8px;
     padding: 6px 14px; font-size: 13px; color: #555; cursor: pointer;
   }
-  #clear-btn:hover { background: #f5f5f5; }
+  #clear-btn:hover, #share-btn:hover { background: #f5f5f5; }
+  #share-btn:disabled { opacity: 0.5; cursor: default; }
   #results-status {
     padding: 0 16px 8px; font-size: 13px; color: #666; flex-shrink: 0;
   }
@@ -350,7 +352,10 @@
   <div class="drag-zone"><div class="drag-hint"></div></div>
   <div id="results-header">
     <h2 id="results-title">Results</h2>
-    <button id="clear-btn">Clear</button>
+    <div id="results-actions">
+      <button id="share-btn">Copy Link</button>
+      <button id="clear-btn">Clear</button>
+    </div>
   </div>
   <div id="results-status"></div>
   <div id="results-list"></div>
@@ -455,6 +460,9 @@ const EXAMPLE_DATA = `Available Copies\tLocation\tCall #
 // ── Globals ──
 let map, userLatLng = null, allMarkers = {}, resultMarkers = [], userMarker = null;
 let resultsPanelDrag;
+// Rows behind the currently displayed results, kept so the share link can be
+// rebuilt on demand instead of living in the address bar.
+let lastResults = [];
 
 // ── Init Map ──
 function initMap() {
@@ -598,6 +606,8 @@ function groupByLibrary(rows) {
 
 // ── Display Results ──
 function showResults(parsed) {
+  lastResults = parsed;
+
   // Clear old result markers
   resultMarkers.forEach(m => map.removeLayer(m));
   resultMarkers = [];
@@ -773,6 +783,78 @@ function parseCopyDetailsHtml(html, format) {
   return results;
 }
 
+// ── Share links ──
+// The hash carries base64 of one of three payloads: catalog HTML, the
+// [{html, format}] array the bookmarklet sends, or the compact {v:1,r:[…]}
+// row form below. The compact form is what the Copy Link button produces —
+// it holds only the fields the results list reads, so a full 100+ row table
+// stays a few thousand characters instead of ~14,000 of catalog markup.
+
+// Standard base64 from btoa, made URL-safe so the hash needs no percent-encoding.
+function encodeShareData(rows) {
+  const payload = {
+    v: 1,
+    r: rows.map(r => {
+      const t = [r.available, r.total, r.libraryName, r.section || '', r.callNumber || '', r.format || ''];
+      while (t.length > 3 && !t[t.length - 1]) t.pop();
+      return t;
+    })
+  };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Accepts URL-safe base64 as well as the percent-encoded standard base64 the
+// bookmarklet writes. Standard base64 never contains - or _, so the swap is safe.
+function decodeShareData(raw) {
+  let b64 = decodeURIComponent(raw).replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  return decodeURIComponent(escape(atob(b64)));
+}
+
+function rowsFromCompact(list) {
+  const rows = [];
+  for (const t of Array.isArray(list) ? list : []) {
+    if (!Array.isArray(t)) continue;
+    const libraryName = String(t[2] || '').trim();
+    if (!libraryName) continue;
+    const available = Number(t[0]) || 0;
+    rows.push({
+      available,
+      total: Number(t[1]) || 0,
+      libraryName,
+      section: String(t[3] || ''),
+      callNumber: String(t[4] || ''),
+      format: t[5] ? String(t[5]) : null,
+      onShelf: available > 0,
+      library: matchLibrary(libraryName)
+    });
+  }
+  return rows;
+}
+
+function shareUrl(rows) {
+  return location.origin + location.pathname + '#data=' + encodeShareData(rows);
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  // Fallback for insecure contexts and older mobile Safari.
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  const ok = document.execCommand('copy');
+  document.body.removeChild(ta);
+  if (!ok) throw new Error('copy command rejected');
+}
+
 // ── Toast ──
 function showToast(msg, duration = 3000) {
   const toast = document.getElementById('toast');
@@ -873,13 +955,13 @@ async function init() {
 
   resultsPanelDrag = makeDraggable(resultsPanel, () => window.innerHeight - sat);
 
-  // ── Bookmarklet hash reader ──
-  // When the bookmarklet opens MinLibMap with #data=<base64>, decode and render
-  // immediately without any user interaction.
+  // ── Hash reader ──
+  // When the bookmarklet or a shared link opens MinLibMap with #data=<base64>,
+  // decode and render immediately without any user interaction.
   const hashMatch = window.location.hash.match(/^#data=(.+)/);
   if (hashMatch) {
     try {
-      const decoded = decodeURIComponent(escape(atob(decodeURIComponent(hashMatch[1]))));
+      const decoded = decodeShareData(hashMatch[1]);
       let parsed = [];
       try {
         const items = JSON.parse(decoded);
@@ -887,6 +969,8 @@ async function init() {
           for (const item of items) {
             parsed.push(...parseCopyDetailsHtml(item.html, item.format));
           }
+        } else if (items && items.v === 1) {
+          parsed = rowsFromCompact(items.r);
         } else {
           parsed = parseCopyDetailsHtml(decoded);
         }
@@ -1049,8 +1133,27 @@ async function init() {
     showResults(parsed);
   });
 
+  // Copy share link
+  const shareBtn = document.getElementById('share-btn');
+  shareBtn.addEventListener('click', async () => {
+    if (!lastResults.length) { showToast('No results to share yet'); return; }
+    const url = shareUrl(lastResults);
+    try {
+      await copyText(url);
+      const label = shareBtn.textContent;
+      shareBtn.textContent = 'Copied';
+      shareBtn.disabled = true;
+      setTimeout(() => { shareBtn.textContent = label; shareBtn.disabled = false; }, 1800);
+      showToast('Link copied. Anyone who opens it sees these results.');
+    } catch (e) {
+      console.warn('Clipboard write failed:', e.message);
+      showToast('Could not copy the link automatically');
+    }
+  });
+
   // Clear / Start Over
   document.getElementById('clear-btn').addEventListener('click', () => {
+    lastResults = [];
     resultsPanelDrag.reset();
     resultsPanel.classList.remove('visible');
     bottomBar.style.display = 'flex';
