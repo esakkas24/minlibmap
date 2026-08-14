@@ -187,8 +187,13 @@
     #bookmarklet-link { cursor: pointer; }
   }
   #install-instructions-link {
-    color: #1a7c3e; font-size: 13px; white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; margin-left: 4px; border-radius: 50%;
+    background: #2196F3; color: #fff; text-decoration: none;
+    font-size: 13px; font-weight: 700; line-height: 1;
+    vertical-align: middle; -webkit-tap-highlight-color: transparent;
   }
+  #install-instructions-link:hover { background: #1976d2; }
 
   /* Bookmarklet install instructions modal */
   #install-overlay-ios,
@@ -264,7 +269,7 @@
   <div id="input-sheet">
     <h2>Find Your Book</h2>
     <div id="bookmarklet-hint">
-      Drag <a id="bookmarklet-link" href="#">MinLibMap</a> to your bookmarks bar for one-click fetching from any catalog item page. <a id="install-instructions-link" href="#">(Instructions)</a>
+      Drag <a id="bookmarklet-link" href="#">MinLibMap</a> to your bookmarks bar for one-click fetching from any catalog item page. <a id="install-instructions-link" href="#" role="button" aria-label="Installation instructions" title="Installation instructions">?</a>
     </div>
     <p class="or-divider"><strong>OR</strong></p>
     <p>Paste the <strong>"Where Is It?"</strong> table from the catalog popup.</p>
