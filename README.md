@@ -20,7 +20,7 @@ The Minuteman catalog's "Where Is It?" feature shows which branches hold a book 
 
 ## Features
 
-- **Map view** of all ~50 Minuteman branch locations
+- **Map view** of all 60 Minuteman library locations
 - **Paste parser** that reads the catalog's "Where Is It?" table format
 - **GPS proximity sorting** — nearest on-shelf branch shown first
 - **One-tap directions** to any branch via Google Maps
@@ -32,7 +32,7 @@ Open `index.html` directly in any browser, or visit the hosted version at [esakk
 
 ## Library Coverage
 
-All 37 public libraries and 5 academic libraries in the Minuteman Library Network, including branches for multi-location systems (Cambridge, Brookline, Somerville, Framingham).
+55 public library locations across 36 member towns, plus 5 academic libraries. Multi-location systems are mapped branch by branch: Acton, Arlington, Brookline, Cambridge, Concord, Dedham, Framingham, Natick, Somerville, Wellesley, and Westwood.
 
 ## Reporting Issues
 
