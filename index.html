@@ -420,6 +420,12 @@ const LIBRARIES = [
   { id:"regis", name:"Regis College Library", lat:42.3507, lng:-71.3085, aliases:["Regis College","Regis"] },
 ];
 
+// Catalog locations that are real but have no fixed address to map. Without
+// these, startsWith matching would fold them into the town they begin with
+// (Framingham Bookmobile into Framingham). They still appear in the results
+// list and location count — they just get no pin.
+const UNMAPPED_LOCATIONS = ["Framingham Bookmobile"];
+
 // ── Example data (from real catalog: Authority by VanderMeer) ──
 const EXAMPLE_DATA = `Available Copies\tLocation\tCall #
 0 of 1\tArlington - Adult\tFIC VANDERMEER, J.
@@ -507,8 +513,14 @@ function parseAvailability(text) {
   return results;
 }
 
+function isUnmappedLocation(name) {
+  const normalized = name.trim().toLowerCase();
+  return UNMAPPED_LOCATIONS.some(loc => normalized.startsWith(loc.toLowerCase()));
+}
+
 function matchLibrary(name) {
   const normalized = name.trim().toLowerCase();
+  if (isUnmappedLocation(normalized)) return null;
   let bestMatch = null, bestLen = 0;
   for (const lib of LIBRARIES) {
     for (const alias of lib.aliases) {
@@ -877,7 +889,7 @@ async function init() {
         parsed = parseCopyDetailsHtml(decoded);
       }
       if (parsed.length > 0) {
-        parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
+        parsed.filter(r => !r.library && !isUnmappedLocation(r.libraryName)).forEach(r => console.warn('Unmatched library:', r.libraryName));
         try {
           const pos = await getUserLocation();
           userLatLng = pos;
@@ -1012,7 +1024,7 @@ async function init() {
     }
 
     // Log unmatched branches to console for debugging (see issue #4)
-    parsed.filter(r => !r.library).forEach(r => console.warn('Unmatched library:', r.libraryName));
+    parsed.filter(r => !r.library && !isUnmappedLocation(r.libraryName)).forEach(r => console.warn('Unmatched library:', r.libraryName));
 
     findBtn.innerHTML = '<span class="spinner"></span>Locating…';
 
