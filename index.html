@@ -1023,14 +1023,25 @@ async function init() {
     // Set href dynamically to avoid HTML-escaping the javascript: URI.
     // Embed the current page's URL as the target so the bookmarklet works from
     // any instance — local dev or production — without hardcoding a URL.
+    //
+    // The catalog to fetch from is derived from the page the bookmarklet runs
+    // on rather than hardcoded, so one bookmarklet serves every Aspen Discovery
+    // instance: catalog.minlib.net, catalog.cwmars.org, and the 165 branded
+    // <town>.cwmars.org catalogs. The GroupedWork match is also the gate — a
+    // page carrying one is an Aspen page, which is a check that keeps working
+    // for instances we have never seen. A hostname allowlist could not.
+    //
+    // When the id comes from a link rather than the address bar, the base
+    // follows that link's origin, so clicking through from a page that merely
+    // links to a catalog record still fetches from the catalog itself.
     const bookmarkletTarget = location.href.split('#')[0];
     bookmarkletLink.href = 'javascript:(function(){' +
       'var p=/GroupedWork\\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:-[a-z]{3})?)/i,' +
-      'm=location.href.match(p);' +
-      'if(!m){var as=document.querySelectorAll(\'a[href*="/GroupedWork/"]\');for(var i=0;i<as.length;i++){m=as[i].href.match(p);if(m)break;}}' +
-      'if(!m){alert(\'Open a catalog item page first\');return;}' +
+      'm=location.href.match(p),b=location.origin;' +
+      'if(!m){var as=document.querySelectorAll(\'a[href*="/GroupedWork/"]\');for(var i=0;i<as.length;i++){m=as[i].href.match(p);if(m){b=as[i].origin;break;}}}' +
+      'if(!m){alert(\'Open a library catalog item page first\');return;}' +
       'var id=m[1],' +
-      'base=\'https://catalog.minlib.net\',' +
+      'base=b,' +
       'target=\'' + bookmarkletTarget + '\';' +
       'fetch(base+\'/GroupedWork/AJAX?method=getCopyDetails&id=\'+id+\'&recordId=\'+id+\'&format=Book\')' +
         '.then(function(r){return r.json();})' +
