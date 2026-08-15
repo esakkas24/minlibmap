@@ -459,6 +459,9 @@ const EXAMPLE_DATA = `Available Copies\tLocation\tCall #
 
 // ── Globals ──
 let map, userLatLng = null, allMarkers = {}, resultMarkers = [], userMarker = null;
+// Which consortium the displayed rows came from. Set from the catalog origin the
+// bookmarklet fetched from; 'mln' until something says otherwise.
+let activeNetwork = 'mln';
 let resultsPanelDrag;
 // Rows behind the currently displayed results, kept so the share link can be
 // rebuilt on demand instead of living in the address bar.
@@ -529,6 +532,19 @@ function parseAvailability(text) {
 function isUnmappedLocation(name) {
   const normalized = name.trim().toLowerCase();
   return UNMAPPED_LOCATIONS.some(loc => normalized.startsWith(loc.toLowerCase()));
+}
+
+// Map a catalog origin to the consortium that runs it. Matching is on hostname
+// suffix, which covers the 165 branded <town>.cwmars.org catalogs without
+// enumerating them, and the leading dot keeps a lookalike domain such as
+// notcwmars.org from matching. Anything unrecognized falls back to Minuteman,
+// which is also what links predating this field get.
+function networkForOrigin(origin) {
+  let host;
+  try { host = new URL(origin).hostname.toLowerCase(); }
+  catch (e) { return 'mln'; }
+  if (host === 'cwmars.org' || host.endsWith('.cwmars.org')) return 'cwmars';
+  return 'mln';
 }
 
 function matchLibrary(name) {
@@ -969,6 +985,12 @@ async function init() {
           for (const item of items) {
             parsed.push(...parseCopyDetailsHtml(item.html, item.format));
           }
+        } else if (items && items.v === 2) {
+          // Bookmarklet payload carrying the catalog origin it fetched from.
+          activeNetwork = networkForOrigin(items.o);
+          for (const item of items.i || []) {
+            parsed.push(...parseCopyDetailsHtml(item.html, item.format));
+          }
         } else if (items && items.v === 1) {
           parsed = rowsFromCompact(items.r);
         } else {
@@ -978,6 +1000,7 @@ async function init() {
         parsed = parseCopyDetailsHtml(decoded);
       }
       if (parsed.length > 0) {
+        console.log('Network:', activeNetwork);
         parsed.filter(r => !r.library && !isUnmappedLocation(r.libraryName)).forEach(r => console.warn('Unmatched library:', r.libraryName));
         try {
           const pos = await getUserLocation();
@@ -1047,7 +1070,7 @@ async function init() {
         '.then(function(r){return r.json();})' +
         '.then(function(j){' +
           'if(!j.modalBody||/unable to find/i.test(j.modalBody)){alert(\'No availability data found\');return;}' +
-          'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(j.modalBody)))));' +
+          'window.open(target+\'#data=\'+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({v:2,o:base,i:[{html:j.modalBody,format:\'Book\'}]}))))));' +
         '})' +
         '.catch(function(){alert(\'No availability data found\');});' +
     '})();';
